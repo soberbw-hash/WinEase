@@ -63,6 +63,7 @@ pub struct FileRow {
     size_bytes: u64,
     group: Option<usize>,
     can_recycle: bool,
+    modified_at: u64,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -81,7 +82,81 @@ pub struct FileScan {
     limited: bool,
     usage: Vec<UsageNode>,
     total_bytes: u64,
+    breakdown: Vec<StorageCategory>,
 }
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StorageCategory {
+    id: &'static str,
+    label: &'static str,
+    size_bytes: u64,
+}
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DriveInfo {
+    path: String,
+    total_bytes: u64,
+    free_bytes: u64,
+}
+#[tauri::command]
+pub fn storage_drives() -> Vec<DriveInfo> {
+    file_scan_drives()
+        .into_iter()
+        .filter_map(|path| {
+            let wide: Vec<u16> = path.encode_utf16().chain(Some(0)).collect();
+            let (mut total, mut free) = (0u64, 0u64);
+            unsafe {
+                windows::Win32::Storage::FileSystem::GetDiskFreeSpaceExW(
+                    windows::core::PCWSTR(wide.as_ptr()),
+                    None,
+                    Some(&mut total),
+                    Some(&mut free),
+                )
+                .ok()?;
+            }
+            Some(DriveInfo {
+                path,
+                total_bytes: total,
+                free_bytes: free,
+            })
+        })
+        .collect()
+}
+fn storage_kind(path: &Path) -> &'static str {
+    let parts: Vec<_> = path
+        .components()
+        .map(|c| c.as_os_str().to_string_lossy().to_lowercase())
+        .collect();
+    if parts.iter().any(|s| s == "$recycle.bin") {
+        "recycle"
+    } else if parts.iter().any(|s| s == "windows")
+        || path
+            .parent()
+            .is_some_and(|p| p.to_string_lossy().trim_end_matches('\\').ends_with(':'))
+    {
+        "system"
+    } else if parts.iter().any(|s| {
+        [
+            "appdata",
+            "programdata",
+            "node_modules",
+            ".git",
+            "program files",
+            "program files (x86)",
+        ]
+        .contains(&s.as_str())
+    }) {
+        "applications"
+    } else if std::env::var_os("USERPROFILE")
+        .is_some_and(|root| path_within(path, &PathBuf::from(root)))
+        || parts.iter().any(|s| s == "users")
+    {
+        "personal"
+    } else {
+        "other"
+    }
+}
+
 fn protected(path: &Path) -> bool {
     for key in [
         "SystemRoot",
@@ -149,7 +224,7 @@ fn scan_files(
     root: PathBuf,
     duplicates: bool,
     cancel: &AtomicBool,
-) -> Result<(Scan, usize, bool, Vec<UsageNode>, u64), String> {
+) -> Result<(Scan, usize, bool, Vec<UsageNode>, u64, Vec<StorageCategory>), String> {
     if !root.is_absolute() || !root.is_dir() || !no_reparse_ancestors(&root) {
         return Err("目录不存在或包含链接。".into());
     }
@@ -166,11 +241,13 @@ fn scan_files(
     let mut limited = false;
     let mut usage: BTreeMap<PathBuf, (u64, u64)> = BTreeMap::new();
     let mut total_bytes = 0u64;
+    let mut breakdown: BTreeMap<&str, u64> = BTreeMap::new();
     let walker = WalkDir::new(&root)
         .follow_links(false)
         .into_iter()
         .filter_entry(|e| {
-            fs::symlink_metadata(e.path()).is_ok_and(|m| m.file_attributes() & 0x400 == 0)
+            !(duplicates && e.depth() > 0 && e.file_type().is_dir() && protected(e.path()))
+                && fs::symlink_metadata(e.path()).is_ok_and(|m| m.file_attributes() & 0x400 == 0)
         });
     for (visited, entry) in walker.enumerate() {
         if cancel.load(Ordering::SeqCst) {
@@ -201,6 +278,8 @@ fn scan_files(
             continue;
         }
         total_bytes = total_bytes.saturating_add(m.len());
+        let size = breakdown.entry(storage_kind(entry.path())).or_default();
+        *size = size.saturating_add(m.len());
         if !duplicates {
             for parent in entry
                 .path()
@@ -237,7 +316,8 @@ fn scan_files(
         }
         files = Vec::new();
         let mut group = 0;
-        for same_size in sizes.into_values().filter(|v| v.len() > 1) {
+        let mut hash_limit = false;
+        for same_size in sizes.into_values().rev().filter(|v| v.len() > 1) {
             let mut hashes: BTreeMap<Vec<u8>, Vec<Candidate>> = BTreeMap::new();
             for mut f in same_size {
                 if !unchanged(&f, &root) {
@@ -259,6 +339,7 @@ fn scan_files(
                         }
                         if started.elapsed() > Duration::from_secs(180) {
                             limited = true;
+                            hash_limit = true;
                             break;
                         }
                         skipped += 1;
@@ -272,7 +353,7 @@ fn scan_files(
                 group += 1;
                 files.extend(values);
             }
-            if limited {
+            if hash_limit {
                 break;
             }
         }
@@ -322,6 +403,20 @@ fn scan_files(
         limited,
         usage,
         total_bytes,
+        [
+            ("personal", "用户文件"),
+            ("applications", "应用文件"),
+            ("system", "系统文件"),
+            ("recycle", "回收站"),
+            ("other", "其他"),
+        ]
+        .into_iter()
+        .map(|(id, label)| StorageCategory {
+            id,
+            label,
+            size_bytes: *breakdown.get(id).unwrap_or(&0),
+        })
+        .collect(),
     ))
 }
 #[tauri::command]
@@ -337,7 +432,7 @@ pub async fn scan_personal_files(
     state.cancel.store(false, Ordering::SeqCst);
     *state.scan.lock().map_err(|e| e.to_string())? = None;
     let cancel = state.cancel.clone();
-    let (scan, skipped, limited, usage, total_bytes) =
+    let (scan, skipped, limited, usage, total_bytes, breakdown) =
         tauri::async_runtime::spawn_blocking(move || {
             scan_files(PathBuf::from(root), duplicates, &cancel)
         })
@@ -349,6 +444,7 @@ pub async fn scan_personal_files(
         limited,
         usage,
         total_bytes,
+        breakdown,
         files: scan
             .files
             .iter()
@@ -365,6 +461,11 @@ pub async fn scan_personal_files(
                 size_bytes: f.size,
                 group: f.group,
                 can_recycle: !protected(&f.path),
+                modified_at: f
+                    .modified
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0),
             })
             .collect(),
     };
@@ -497,9 +598,10 @@ mod tests {
         fs::create_dir(root.path().join("nested")).unwrap();
         fs::write(root.path().join("a"), [0u8; 10]).unwrap();
         fs::write(root.path().join("nested/b"), [0u8; 30]).unwrap();
-        let (scan, _, _, usage, total) =
+        let (scan, _, _, usage, total, breakdown) =
             scan_files(root.path().into(), false, &AtomicBool::new(false)).unwrap();
         assert_eq!(total, 40);
+        assert_eq!(breakdown.iter().map(|v| v.size_bytes).sum::<u64>(), total);
         assert_eq!(scan.files.len(), 2);
         assert!(usage
             .iter()

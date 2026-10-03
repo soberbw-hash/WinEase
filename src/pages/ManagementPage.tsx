@@ -101,8 +101,8 @@ export function ManagementPage({
       clearInterval(timer);
     };
   }, [tab]);
-  async function apply() {
-    const item = pending;
+  async function apply(direct?: Startup) {
+    const item = direct ?? pending;
     setPending(null);
     if (!item || lock.current) return;
     lock.current = true;
@@ -267,20 +267,26 @@ export function ManagementPage({
                       {p.source} · {p.command}
                     </small>
                   </div>
-                  <button
-                    className="secondary-button"
-                    disabled={busy || !p.editable}
-                    onClick={() => {
-                      setBlocking(false);
-                      setPending(p);
-                    }}
+                  <label
+                    className="startup-toggle"
+                    title={
+                      p.editable ? "切换开机启动" : "此来源由 Windows 管理"
+                    }
                   >
-                    {p.editable
-                      ? p.enabled
-                        ? "停用"
-                        : "恢复"
-                      : "Windows 管理"}
-                  </button>
+                    <span>{p.enabled ? "开" : "关"}</span>
+                    <input
+                      type="checkbox"
+                      role="switch"
+                      aria-label={`${p.name} 开机启动`}
+                      checked={p.enabled}
+                      disabled={busy || !p.editable}
+                      onChange={() => {
+                        setBlocking(false);
+                        void apply(p);
+                      }}
+                    />
+                    <span className="toggle-track" aria-hidden="true" />
+                  </label>
                 </div>
               ))}
             </div>

@@ -1913,6 +1913,7 @@ pub fn run() {
             scan_storage_hotspots,
             cleaning::scan_cleaning,
             cleaning::clean_selected,
+            cleaning::cleaning_files,
             windows_settings::get_windows_settings,
             windows_settings::set_windows_setting,
             windows_settings::restore_windows_setting,
@@ -1943,6 +1944,7 @@ pub fn run() {
             file_management::scan_personal_files,
             file_management::cancel_file_scan,
             file_management::file_scan_drives,
+            file_management::storage_drives,
             file_management::recycle_selected_files
         ])
         .run(tauri::generate_context!())

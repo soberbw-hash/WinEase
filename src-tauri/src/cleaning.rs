@@ -1,5 +1,6 @@
 use crate::{build_action_result, format_bytes, local_app_data_dir, ToolActionResult};
 use serde::Serialize;
+use std::collections::BTreeMap;
 use std::{
     fs,
     os::windows::fs::{MetadataExt, OpenOptionsExt},
@@ -47,6 +48,150 @@ pub struct CleaningScan {
     scan_id: String,
     categories: Vec<Category>,
     skipped_entries: u64,
+    groups: Vec<CleaningGroup>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CleaningGroup {
+    id: String,
+    label: String,
+    category: &'static str,
+    path: String,
+    size_bytes: u64,
+    file_count: u64,
+    recommended: bool,
+}
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CleaningFile {
+    id: usize,
+    name: String,
+    path: String,
+    size_bytes: u64,
+}
+#[derive(Serialize)]
+pub struct CleaningFiles {
+    files: Vec<CleaningFile>,
+    total: usize,
+}
+fn group_key(scan: &Scan, file: &Candidate) -> String {
+    let root = scan
+        .roots
+        .iter()
+        .enumerate()
+        .filter(|(_, root)| file.path.starts_with(root))
+        .max_by_key(|(_, root)| root.components().count())
+        .map(|(i, _)| i)
+        .unwrap_or(0);
+    format!("{}:{root}", file.category)
+}
+fn group_label(path: &Path, category: &str) -> String {
+    let text = path.to_string_lossy().to_lowercase();
+    let app = [
+        ("google", "Chrome"),
+        ("microsoft\\edge", "Edge"),
+        ("brave", "Brave"),
+        ("vivaldi", "Vivaldi"),
+        ("firefox", "Firefox"),
+        ("nvidia", "NVIDIA"),
+        ("npm-cache", "Node.js"),
+        ("pip", "Python"),
+        ("nuget", "NuGet"),
+        ("discord", "Discord"),
+        ("slack", "Slack"),
+        ("teams", "Teams"),
+        ("steam", "Steam"),
+        ("doubao", "豆包"),
+        ("todesk", "ToDesk"),
+        ("chatgpt", "ChatGPT"),
+        ("\\code\\", "VS Code"),
+    ]
+    .into_iter()
+    .find(|(key, _)| text.contains(key))
+    .map(|(_, name)| name);
+    let kind = match category {
+        "logs" => "日志文件",
+        "caches" => {
+            if text.contains("explorer") {
+                "缩略图缓存"
+            } else {
+                "着色器缓存"
+            }
+        }
+        "browser" => "网页缓存",
+        "applications" => "运行缓存",
+        "crashes" => "错误报告",
+        "downloads-cache" => "下载缓存",
+        _ => "临时文件",
+    };
+    app.map(|app| format!("{app} · {kind}"))
+        .unwrap_or_else(|| kind.into())
+}
+impl Scan {
+    fn groups(&self) -> Vec<CleaningGroup> {
+        let mut groups: BTreeMap<String, CleaningGroup> = BTreeMap::new();
+        for file in &self.files {
+            let id = group_key(self, file);
+            let index: usize = id.rsplit(':').next().unwrap().parse().unwrap();
+            let root = &self.roots[index];
+            let group = groups.entry(id.clone()).or_insert_with(|| CleaningGroup {
+                id,
+                label: group_label(root, file.category),
+                category: file.category,
+                path: root.to_string_lossy().into(),
+                size_bytes: 0,
+                file_count: 0,
+                recommended: !matches!(file.category, "downloads-cache" | "caches" | "crashes"),
+            });
+            group.size_bytes = group.size_bytes.saturating_add(file.size);
+            group.file_count += 1;
+        }
+        let mut groups: Vec<_> = groups.into_values().collect();
+        groups.sort_by(|a, b| b.size_bytes.cmp(&a.size_bytes));
+        groups
+    }
+}
+#[tauri::command]
+pub fn cleaning_files(
+    scan_id: String,
+    group_id: String,
+    offset: usize,
+    state: tauri::State<'_, CleaningState>,
+) -> Result<CleaningFiles, String> {
+    let lock = state.0.lock().map_err(|_| "清理任务状态异常")?;
+    let scan = lock.as_ref().ok_or("请重新扫描")?;
+    if scan.id != scan_id || scan.created.elapsed() > SCAN_TTL {
+        return Err("扫描结果已失效，请重新扫描".into());
+    }
+    if !scan.groups().iter().any(|g| g.id == group_id) {
+        return Err("清理项目无效".into());
+    }
+    let items: Vec<_> = scan
+        .files
+        .iter()
+        .enumerate()
+        .filter(|(_, f)| group_key(scan, f) == group_id)
+        .collect();
+    Ok(CleaningFiles {
+        total: items.len(),
+        files: items
+            .into_iter()
+            .skip(offset)
+            .take(100)
+            .map(|(id, f)| CleaningFile {
+                id,
+                name: f
+                    .path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .into(),
+                path: f.path.to_string_lossy().into(),
+                size_bytes: f.size,
+            })
+            .collect(),
+    })
 }
 
 pub(super) fn no_reparse_ancestors(path: &Path) -> bool {
@@ -162,30 +307,23 @@ impl Scan {
             scan_id: self.id.clone(),
             categories,
             skipped_entries: self.skipped,
+            groups: self.groups(),
         }
     }
 }
 fn take_scan(state: &CleaningState, scan_id: &str, categories: &[String]) -> Result<Scan, String> {
-    if categories.is_empty()
-        || categories.iter().any(|id| {
-            ![
-                "temporary",
-                "logs",
-                "caches",
-                "browser",
-                "applications",
-                "crashes",
-                "downloads-cache",
-            ]
-            .contains(&id.as_str())
-        })
-    {
-        return Err("请选择有效的清理项目。".into());
-    }
     let mut current = state.0.lock().map_err(|_| "清理任务状态异常".to_string())?;
     let scan = current.as_ref().ok_or("请先扫描临时文件。")?;
     if scan.id != scan_id || scan.created.elapsed() > SCAN_TTL {
         return Err("扫描结果已失效，请重新扫描。".into());
+    }
+    if categories.is_empty()
+        || categories.iter().any(|id| {
+            !scan.summary().categories.iter().any(|c| c.id == id)
+                && !scan.groups().iter().any(|g| &g.id == id)
+        })
+    {
+        return Err("请选择有效的清理项目。".into());
     }
     Ok(current.take().unwrap())
 }
@@ -194,11 +332,11 @@ fn clean_scan(scan: Scan, categories: &[String]) -> ToolActionResult {
     let mut freed = 0;
     let mut removed = 0;
     let mut skipped = 0;
-    for file in scan
-        .files
-        .iter()
-        .filter(|file| categories.iter().any(|id| id == file.category))
-    {
+    for file in scan.files.iter().filter(|file| {
+        categories
+            .iter()
+            .any(|id| id == file.category || *id == group_key(&scan, file))
+    }) {
         if !scan.roots.iter().any(|root| file.path.starts_with(root))
             || !no_reparse_ancestors(&file.path)
         {
@@ -329,7 +467,15 @@ fn extend_cleaners(scan: &mut Scan, local: &Path) {
         }
     }
     if let Some(roaming) = std::env::var_os("APPDATA") {
-        for app in ["Code", "discord", "Slack", "Microsoft\\Teams"] {
+        for app in [
+            "Code",
+            "discord",
+            "Slack",
+            "Microsoft\\Teams",
+            "ChatGPT",
+            "Doubao",
+            "ToDesk",
+        ] {
             for cache in ["Cache", "Code Cache", "GPUCache"] {
                 targets.push((
                     PathBuf::from(&roaming).join(app).join(cache),
@@ -357,7 +503,21 @@ fn extend_cleaners(scan: &mut Scan, local: &Path) {
         targets.push((local.join(relative), "crashes", MIN_AGE));
     }
     if let Some(windows) = std::env::var_os("SystemRoot") {
-        targets.push((PathBuf::from(windows).join("Temp"), "temporary", MIN_AGE));
+        let windows = PathBuf::from(windows);
+        targets.push((windows.join("Temp"), "temporary", MIN_AGE));
+        // Only rotated log files; never servicing packages or update databases.
+        for directory in [r"Logs\CBS", r"Logs\DISM", r"Panther"] {
+            targets.push((windows.join(directory), "logs", MIN_AGE));
+        }
+        targets.push((windows.join("Minidump"), "crashes", MIN_AGE));
+    }
+    if let Some(data) = std::env::var_os("ProgramData") {
+        for folder in [
+            r"Microsoft\Windows\WER\ReportArchive",
+            r"Microsoft\Windows\WER\ReportQueue",
+        ] {
+            targets.push((PathBuf::from(&data).join(folder), "crashes", MIN_AGE));
+        }
     }
     for (path, category, age) in targets {
         if !path.is_dir() {
@@ -365,6 +525,13 @@ fn extend_cleaners(scan: &mut Scan, local: &Path) {
         }
         match scan_root_age(&path, age) {
             Ok(mut extra) => {
+                if category == "logs" {
+                    extra.files.retain(|f| {
+                        f.path
+                            .extension()
+                            .is_some_and(|ext| ext.eq_ignore_ascii_case("log"))
+                    });
+                }
                 for file in &mut extra.files {
                     file.category = category;
                 }
@@ -400,6 +567,50 @@ mod tests {
         );
         filetime::set_file_mtime(&path, modified).unwrap();
         path
+    }
+    #[test]
+    fn root_groups_select_only_inspected_cache_and_keep_other_app() {
+        let root = tempfile::tempdir().unwrap();
+        let chrome = root.path().join("Chrome");
+        let edge = root.path().join("Edge");
+        fs::create_dir(&chrome).unwrap();
+        fs::create_dir(&edge).unwrap();
+        let first = old_file(&chrome, "a.cache");
+        let second = old_file(&edge, "b.cache");
+        let mut scan = scan_root(&chrome).unwrap();
+        let other = scan_root(&edge).unwrap();
+        scan.roots.extend(other.roots);
+        scan.files.extend(other.files);
+        for file in &mut scan.files {
+            file.category = "browser";
+        }
+        let groups = scan.groups();
+        assert_eq!(groups.len(), 2);
+        assert_eq!(
+            groups.iter().map(|g| g.size_bytes).sum::<u64>(),
+            scan.files.iter().map(|f| f.size).sum::<u64>()
+        );
+        let first_group = group_key(&scan, &scan.files[0]);
+        assert!(clean_scan(scan, &[first_group]).success);
+        assert!(!first.exists());
+        assert!(second.exists());
+    }
+    #[test]
+    fn costly_rebuilds_and_diagnostic_reports_are_optional() {
+        let root = tempfile::tempdir().unwrap();
+        old_file(root.path(), "cache.bin");
+        let mut scan = scan_root(root.path()).unwrap();
+        for category in ["downloads-cache", "caches", "crashes"] {
+            scan.files[0].category = category;
+            assert!(!scan.groups()[0].recommended);
+        }
+        assert_eq!(
+            group_label(
+                Path::new(r"C:\Users\Test\AppData\Local\Google\Chrome\User Data\Default\Cache"),
+                "browser"
+            ),
+            "Chrome · 网页缓存"
+        );
     }
     #[test]
     fn scan_excludes_recent_files() {

@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { formatBytes } from "../format";
-import type { CleaningScan, ToolActionResult } from "../types";
+
+import type { CleaningGroup, CleaningScan, ToolActionResult } from "../types";
 
 export function CleaningPage({
   onResult,
@@ -16,11 +17,192 @@ export function CleaningPage({
   const [result, setResult] = useState<ToolActionResult | null>(null);
   const [confirm, setConfirm] = useState(false);
   const lock = useRef(false);
+  const [expanded, setExpanded] = useState<string[]>([]);
+  const [details, setDetails] = useState<
+    Record<
+      string,
+      {
+        files: Array<{
+          id: number;
+          name: string;
+          path: string;
+          sizeBytes: number;
+        }>;
+        total: number;
+      }
+    >
+  >({});
+  const [detailError, setDetailError] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState<string[]>([]);
+  const detailGeneration = useRef(0);
+  async function loadDetails(item: CleaningGroup, offset = 0) {
+    if (!scan || loading.includes(item.id)) return;
+    const generation = detailGeneration.current;
+    setLoading((ids) => [...ids, item.id]);
+    setDetailError((errors) => ({ ...errors, [item.id]: "" }));
+    try {
+      const next = await invoke<{
+        files: Array<{
+          id: number;
+          name: string;
+          path: string;
+          sizeBytes: number;
+        }>;
+        total: number;
+      }>("cleaning_files", { scanId: scan.scanId, groupId: item.id, offset });
+      if (generation === detailGeneration.current)
+        setDetails((current) => ({
+          ...current,
+          [item.id]: {
+            total: next.total,
+            files: offset
+              ? [...(current[item.id]?.files ?? []), ...next.files]
+              : next.files,
+          },
+        }));
+    } catch (err) {
+      if (generation === detailGeneration.current)
+        setDetailError((errors) => ({ ...errors, [item.id]: String(err) }));
+    } finally {
+      if (generation === detailGeneration.current)
+        setLoading((ids) => ids.filter((id) => id !== item.id));
+    }
+  }
+  function toggleDetails(item: CleaningGroup) {
+    setExpanded((ids) =>
+      ids.includes(item.id)
+        ? ids.filter((id) => id !== item.id)
+        : [...ids, item.id],
+    );
+    if (!details[item.id]) void loadDetails(item);
+  }
+  function toggleGroup(id: string, checked: boolean) {
+    setSelected((ids) =>
+      checked
+        ? [...new Set([...ids, id])]
+        : ids.filter((value) => value !== id),
+    );
+  }
+  function renderGroups(items: CleaningGroup[], title: string) {
+    if (!items.length) return null;
+    const all = items.every((item) => selected.includes(item.id));
+    const subtotal = items
+      .filter((item) => selected.includes(item.id))
+      .reduce((n, item) => n + item.sizeBytes, 0);
+    return (
+      <section className="cleanup-group">
+        <div className="cleanup-group__head">
+          <label>
+            <input
+              type="checkbox"
+              checked={all}
+              disabled={busy !== null}
+              aria-label={`选择${title}`}
+              onChange={(e) =>
+                setSelected((ids) =>
+                  e.target.checked
+                    ? [...new Set([...ids, ...items.map((item) => item.id)])]
+                    : ids.filter((id) => !items.some((item) => item.id === id)),
+                )
+              }
+            />
+            {title}
+          </label>
+          <span>
+            {formatBytes(subtotal)} /{" "}
+            {formatBytes(items.reduce((n, item) => n + item.sizeBytes, 0))}
+          </span>
+        </div>
+        {items.map((item) => (
+          <div className="cleanup-item" key={item.id}>
+            <div className="cleanup-item__head">
+              <input
+                type="checkbox"
+                aria-label={`选择 ${item.label}`}
+                checked={selected.includes(item.id)}
+                disabled={busy !== null}
+                onChange={(e) => toggleGroup(item.id, e.target.checked)}
+              />
+              <button
+                className="cleanup-expand"
+                aria-expanded={expanded.includes(item.id)}
+                aria-controls={`files-${item.id}`}
+                onClick={() => toggleDetails(item)}
+              >
+                <span aria-hidden="true">
+                  {expanded.includes(item.id) ? "⌄" : "›"}
+                </span>
+                <strong>{item.label}</strong>
+                <small>{item.fileCount} 个文件</small>
+              </button>
+              <span className="tabular">{formatBytes(item.sizeBytes)}</span>
+            </div>
+            {expanded.includes(item.id) && (
+              <div className="cleanup-files" id={`files-${item.id}`}>
+                <p className="scope-note" title={item.path}>
+                  {item.path}
+                </p>
+                {detailError[item.id] && (
+                  <p role="alert" className="inline-error">
+                    {detailError[item.id]}{" "}
+                    <button
+                      className="ghost-button"
+                      onClick={() => void loadDetails(item)}
+                    >
+                      重试
+                    </button>
+                  </p>
+                )}
+                {details[item.id]?.files.map((file) => (
+                  <div className="cleanup-file" key={file.id}>
+                    <div>
+                      <strong title={file.name}>{file.name}</strong>
+                      <small title={file.path}>{file.path}</small>
+                    </div>
+                    <span>{formatBytes(file.sizeBytes)}</span>
+                    <button
+                      className="ghost-button"
+                      onClick={() =>
+                        void invoke("open_target", {
+                          target: file.path.substring(
+                            0,
+                            file.path.lastIndexOf("\\"),
+                          ),
+                        }).catch((err) => setError(String(err)))
+                      }
+                    >
+                      目录 ↗
+                    </button>
+                  </div>
+                ))}
+                {loading.includes(item.id) ? (
+                  <p role="status">读取明细…</p>
+                ) : (
+                  details[item.id] &&
+                  details[item.id].files.length < details[item.id].total && (
+                    <button
+                      className="secondary-button"
+                      onClick={() =>
+                        void loadDetails(item, details[item.id].files.length)
+                      }
+                    >
+                      查看更多（{details[item.id].files.length}/
+                      {details[item.id].total}）
+                    </button>
+                  )
+                )}
+              </div>
+            )}
+          </div>
+        ))}
+      </section>
+    );
+  }
   useEffect(() => {
     if (isTauri()) void scanFiles();
   }, []);
   const bytes =
-    scan?.categories
+    scan?.groups
       .filter((item) => selected.includes(item.id))
       .reduce((sum, item) => sum + item.sizeBytes, 0) ?? 0;
   async function scanFiles() {
@@ -28,6 +210,11 @@ export function CleaningPage({
     lock.current = true;
     setBusy("scan");
     setError("");
+    detailGeneration.current++;
+    setExpanded([]);
+    setDetails({});
+    setDetailError({});
+    setLoading([]);
     setScan(null);
     setResult(null);
     setSelected([]);
@@ -35,8 +222,8 @@ export function CleaningPage({
       const next = await invoke<CleaningScan>("scan_cleaning");
       setScan(next);
       setSelected(
-        next.categories
-          .filter((item) => item.fileCount > 0)
+        next.groups
+          .filter((item) => item.recommended && item.fileCount > 0)
           .map((item) => item.id),
       );
     } catch (err) {
@@ -92,35 +279,18 @@ export function CleaningPage({
         )}
         {scan ? (
           <>
-            <div className="cleaning-list">
-              {scan.categories.map((item) => (
-                <label className="setting-line" key={item.id}>
-                  <span>
-                    <input
-                      type="checkbox"
-                      checked={selected.includes(item.id)}
-                      disabled={busy !== null || item.fileCount === 0}
-                      onChange={(event) =>
-                        setSelected((current) =>
-                          event.target.checked
-                            ? [...current, item.id]
-                            : current.filter((id) => id !== item.id),
-                        )
-                      }
-                    />
-                    {item.label}
-                  </span>
-                  <span className="cleaning-list__size">
-                    {item.fileCount} 个文件 · {formatBytes(item.sizeBytes)}
-                  </span>
-                </label>
-              ))}
-            </div>
-            <div className="cleaning-summary">
+            <div className="cleanup-discovery">
               <div>
-                <span>预计可释放</span>
-                <strong>{formatBytes(bytes)}</strong>
+                <strong>
+                  发现{" "}
+                  {formatBytes(
+                    scan.groups.reduce((n, item) => n + item.sizeBytes, 0),
+                  )}{" "}
+                  可清理项目
+                </strong>
+                <span>已选 {formatBytes(bytes)} · 点击项目查看文件</span>
               </div>
+
               <button
                 className="primary-button"
                 disabled={!selected.length || busy !== null}
@@ -129,6 +299,29 @@ export function CleaningPage({
                 清理所选
               </button>
             </div>
+            {renderGroups(
+              scan.groups.filter(
+                (item) =>
+                  item.recommended &&
+                  ["temporary", "logs"].includes(item.category),
+              ),
+              "推荐系统清理",
+            )}
+            {renderGroups(
+              scan.groups.filter(
+                (item) =>
+                  item.recommended &&
+                  !["temporary", "logs"].includes(item.category),
+              ),
+              "推荐应用清理",
+            )}
+            {renderGroups(
+              scan.groups.filter((item) => !item.recommended),
+              "其他可选项目",
+            )}
+            {scan.groups.length === 0 && (
+              <div className="empty-state">未发现符合保留期限的缓存文件</div>
+            )}
             <p className="scope-note">
               已跳过 {scan.skippedEntries} 个近期、不可读或链接项目
             </p>
@@ -144,6 +337,19 @@ export function CleaningPage({
             </div>
           )
         )}
+        <div className="cleanup-system-entry">
+          <span>Windows 更新、传递优化及回收站</span>
+          <button
+            className="ghost-button"
+            onClick={() =>
+              void invoke("open_target", {
+                target: "ms-settings:storagesense",
+              }).catch((err) => setError(String(err)))
+            }
+          >
+            系统清理 ↗
+          </button>
+        </div>
       </section>
       {result && (
         <section className="surface" aria-live="polite">

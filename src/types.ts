@@ -17,6 +17,7 @@ export type CleaningScan = {
     sizeBytes: number;
     fileCount: number;
   }>;
+  groups: CleaningGroup[];
   skippedEntries: number;
 };
 export type WindowsSetting = {
@@ -159,4 +160,14 @@ export type BossModeViewState = {
 
 export type AppSettings = {
   captureHelperEnabled: boolean;
+};
+
+export type CleaningGroup = {
+  id: string;
+  label: string;
+  category: string;
+  path: string;
+  sizeBytes: number;
+  fileCount: number;
+  recommended: boolean;
 };
