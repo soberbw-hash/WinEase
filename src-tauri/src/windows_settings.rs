@@ -17,14 +17,7 @@ struct Definition {
     on: u32,
     off: u32,
 }
-const DEFINITIONS: [Definition; 2] = [
-    Definition {
-        id: "file-extensions",
-        label: "显示文件扩展名",
-        name: "HideFileExt",
-        on: 0,
-        off: 1,
-    },
+const DEFINITIONS: [Definition; 1] = [
     Definition {
         id: "hidden-files",
         label: "显示隐藏文件",
@@ -267,17 +260,18 @@ mod tests {
     fn originally_absent_value_is_recorded() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("backup.json");
-        let item = definition("file-extensions").unwrap();
+        let item = definition("hidden-files").unwrap();
         ensure_backup(&path, item, None).unwrap();
         assert_eq!(read_backup(&path, item).unwrap().original, None);
     }
     #[test]
     fn invalid_ids_and_mismatched_backups_are_rejected() {
         assert!(definition("../hidden-files").is_err());
+        assert!(definition("file-extensions").is_err());
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("backup.json");
-        ensure_backup(&path, definition("hidden-files").unwrap(), Some(2)).unwrap();
-        assert!(read_backup(&path, definition("file-extensions").unwrap()).is_err());
+        fs::write(&path, br#"{"id":"file-extensions","original":0}"#).unwrap();
+        assert!(read_backup(&path, definition("hidden-files").unwrap()).is_err());
     }
     #[test]
     fn corrupt_backup_is_not_overwritten() {
