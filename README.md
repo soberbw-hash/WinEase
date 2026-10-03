@@ -2,6 +2,8 @@
 
 极简 Windows 工具箱：清理、空间管理、应用管理与常用系统设置。
 
+未来定位与功能取舍见 [产品方向](docs/product-direction.md)。
+
 品牌原图与图标生成方式见 [品牌资源](docs/branding/README.md)。
 
 ## v3.5.0
