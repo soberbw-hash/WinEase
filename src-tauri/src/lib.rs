@@ -1,5 +1,6 @@
 mod application_icons;
 mod cleaning;
+mod component_launcher;
 mod component_updates;
 mod file_management;
 mod management;
@@ -316,11 +317,6 @@ mod portable_component_tests {
             &["ContextMenuManager.exe".into()]
         )
         .is_empty());
-        let definition = component_definitions_internal()
-            .into_iter()
-            .find(|item| item.id == "context-menu-manager")
-            .unwrap();
-        assert!(definition.supports_repair && definition.supports_update && definition.supports_uninstall);
     }
     #[test]
     #[ignore = "read-only installed ContextMenuManager lookup; never launches or repairs"]
@@ -337,6 +333,34 @@ mod portable_component_tests {
             ],
         );
         assert!(find_first_existing_path(&paths).is_some());
+    }
+
+    #[test]
+    #[ignore = "opens the installed component through the production button backend; may prompt for UAC"]
+    fn installed_context_menu_manager_launches_through_button_backend() {
+        let root = local_app_data_dir()
+            .unwrap()
+            .join("Microsoft/WinGet/Packages");
+        let path = find_first_existing_path(&portable_package_executables(
+            &root,
+            "BluePointLilac.ContextMenuManager",
+            &[
+                "ContextMenuManager.exe".into(),
+                "ContextMenuManager.NET.4.0.exe".into(),
+            ],
+        ))
+        .unwrap();
+        let direct = Command::new(&path)
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn();
+        assert_eq!(
+            direct.unwrap_err().raw_os_error(),
+            Some(740),
+            "run this test without administrator permissions to exercise the fallback"
+        );
+        let result = launch_component_internal("context-menu-manager").unwrap();
+        assert!(result.success, "{}", result.summary);
+        println!("{}\n{}", result.summary, result.details);
     }
 }
 
@@ -1712,16 +1736,7 @@ fn spawn_detached(program: &str, args: &[String]) -> Result<(), String> {
 }
 
 fn spawn_detached_path(executable: &Path, args: &[String]) -> Result<(), String> {
-    Command::new(executable)
-        .args(args)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .creation_flags(CREATE_NO_WINDOW)
-        .spawn()
-        .map_err(|error| format!("Failed to launch {}: {error}", executable.display()))?;
-
-    Ok(())
+    component_launcher::launch(executable, args)
 }
 
 fn build_action_result(

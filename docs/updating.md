@@ -31,3 +31,13 @@
 本机右键菜单管理器入口只读识别通过，EXE 的 SHA-256 与 [官方 WinGet 安装清单](https://raw.githubusercontent.com/microsoft/winget-pkgs/master/manifests/b/BluePointLilac/ContextMenuManager/3.3.3.1/BluePointLilac.ContextMenuManager.installer.yaml)一致。隔离目录验证包 ID 边界和 EXE 白名单；模拟界面验证打开按钮发送启动命令，没有触发修复。未重新安装软件。
 
 右键菜单管理器现在与 Clash Verge Rev 一样提供打开、修复、更新、卸载四个入口。打开操作绕过耗时的组件总表刷新，直接启动已定位的便携 EXE；任务立即返回，组件卡片不会长时间停在“正在打开”。
+
+## 管理员组件启动
+
+右键菜单管理器要求管理员权限。此前按钮直接调用 CreateProcess，已安装且路径正确仍返回 Windows 错误 740；外部 PowerShell 的 Start-Process 成功不能作为按钮启动成功的证据。
+
+所有组件的 EXE 启动共用新逻辑：先按普通权限启动，仅收到错误 740 时通过 Windows ShellExecuteExW 的 `runas` 请求管理员授权；普通权限组件不触发提权，文件缺失、拒绝访问等其他错误保留失败。工作目录设为 EXE 所在目录，参数按 Windows argv 规则转义。后台线程只等启动及授权结束，不等待组件退出；关闭进程句柄并平衡 COM 初始化。取消授权明确提示“已取消管理员授权，组件未打开”，不报告打开成功。
+
+本机以非管理员测试进程先复现直接启动的 740，再调用“打开”按钮使用的 `launch_component_internal`，成功启动已安装的 ContextMenuManager；随后读取进程信息，检测到其窗口句柄。未重装组件、未修改右键设置。本次验证覆盖真实按钮后台路径，未使用外部启动代替，也未自动点击 Windows 授权窗口。58 项自动测试通过，新增测试覆盖仅 740 提权、取消授权、参数经 Windows 原生解析后保持一致及无效字符拒绝；真实启动测试需显式运行。
+
+官方依据：[ShellExecuteExW](https://learn.microsoft.com/zh-cn/windows/win32/api/shellapi/nf-shellapi-shellexecuteexw)、[runas 与启动参数](https://learn.microsoft.com/en-us/windows/win32/api/shellapi/ns-shellapi-shellexecuteinfow)。
