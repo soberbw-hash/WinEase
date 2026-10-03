@@ -1,6 +1,27 @@
+@font-face {
+  font-family: "WinEase HarmonyOS";
+  src: url("/fonts/HarmonyOS_Sans_SC_Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "WinEase HarmonyOS";
+  src: url("/fonts/HarmonyOS_Sans_SC_Medium.ttf") format("truetype");
+  font-weight: 500 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "WinEase HarmonyOS";
+  src: url("/fonts/HarmonyOS_Sans_SC_Bold.ttf") format("truetype");
+  font-weight: 650 900;
+  font-style: normal;
+  font-display: swap;
+}
 :root {
   font-family:
-    "Segoe UI Variable Text", "Microsoft YaHei UI", "Segoe UI", sans-serif;
+    "WinEase HarmonyOS", "Microsoft YaHei UI", "Segoe UI", sans-serif;
   color: #202124;
   background: #f6f7f9;
   font-synthesis: none;
@@ -79,7 +100,7 @@ code {
   --text-faint: #89909a;
   --accent: #0874cf;
   --font-stack:
-    "Segoe UI Variable Text", "Microsoft YaHei UI", "Segoe UI", sans-serif;
+    "WinEase HarmonyOS", "Microsoft YaHei UI", "Segoe UI", sans-serif;
   --font-size-base: 14px;
   --space-4: 12px;
   --space-5: 14px;
@@ -91,25 +112,6 @@ code {
   height: 100dvh;
   width: 100%;
   overflow: hidden;
-}
-.app-shell[data-font="harmony"] {
-  --font-stack:
-    "HarmonyOS Sans SC", "HarmonyOS Sans", "Microsoft YaHei UI", "Segoe UI",
-    sans-serif;
-}
-.app-shell[data-scale="compact"] {
-  --font-size-base: 13px;
-}
-.app-shell[data-scale="relaxed"] {
-  --font-size-base: 16px;
-}
-.app-shell[data-density="compact"] {
-  --space-5: 10px;
-  --space-6: 14px;
-}
-.app-shell[data-density="comfortable"] {
-  --space-5: 18px;
-  --space-6: 22px;
 }
 .sidebar {
   min-width: 0;
@@ -1312,5 +1314,77 @@ code {
   .settings-grid,
   .tool-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.application-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+  color: #89909a;
+}
+.application-icon img {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+}
+.settings-component-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.settings-component-name img {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+.settings-component-name h3 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.font-license-dialog {
+  position: fixed;
+  z-index: 50;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(640px, calc(100vw - 40px));
+  max-height: calc(100dvh - 40px);
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  gap: 12px;
+  padding: 22px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+}
+.font-license-dialog pre {
+  max-height: 50dvh;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 0;
+}
+.font-license-dialog button {
+  justify-self: end;
+}
+.component-capture-toggle {
+  display: inline-flex;
+  align-items: center;
+  font-size: 12px;
+  color: #68707c;
+  white-space: nowrap;
+}
+@media (max-width: 950px), (max-height: 650px) {
+  .app-shell {
+    --font-size-base: 13px;
+    --space-5: 10px;
+    --space-6: 14px;
   }
 }

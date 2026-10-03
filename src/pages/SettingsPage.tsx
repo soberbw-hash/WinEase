@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { bossModeShortcut } from "../content";
 import { version } from "../../package.json";
+import { getComponentIconPath } from "../componentIcons";
+import * as Dialog from "@radix-ui/react-dialog";
+import fontLicense from "../assets/harmonyos-license.txt?raw";
 import type {
-  AppSettings,
   ComponentBusyState,
   ComponentManifest,
   ComponentOperation,
@@ -13,11 +15,9 @@ import type {
 type Props = {
   snapshot: SystemSnapshot | null;
   onOpenDeviceInfo: () => void;
-  settings: AppSettings;
   components: ComponentManifest[];
   notices: ThirdPartyNotice[];
   busyState: ComponentBusyState | null;
-  onUpdateSettings: (patch: Partial<AppSettings>) => void;
   onEnterBossMode: () => void;
   onManageComponent: (id: string, operation: ComponentOperation) => void;
   onLaunchComponent: (id: string) => void;
@@ -27,11 +27,9 @@ type Props = {
 export function SettingsPage({
   snapshot,
   onOpenDeviceInfo,
-  settings,
   components,
   notices,
   busyState,
-  onUpdateSettings,
   onEnterBossMode,
   onManageComponent,
   onLaunchComponent,
@@ -39,9 +37,23 @@ export function SettingsPage({
   onOpenSupportModal,
 }: Props) {
   const [section, setSection] = useState("general");
+  const [fontLicenseOpen, setFontLicenseOpen] = useState(false);
+  const licenseOrigin = useRef<HTMLElement | null>(null);
   const installed = components.filter(
     (item) => item.installed && item.kind !== "built-in",
   );
+  const allNotices: ThirdPartyNotice[] = [
+    {
+      id: "harmonyos-sans",
+      name: "HarmonyOS Sans SC",
+      version: "内置",
+      sourceLabel: "华为",
+      sourceUrl: "https://developer.huawei.com/consumer/cn/design/resource/",
+      licenseName: "HarmonyOS Sans 字体许可",
+      notes: "",
+    },
+    ...notices,
+  ];
   return (
     <div className="page-stack">
       <nav className="subnav" aria-label="设置分类">
@@ -62,60 +74,6 @@ export function SettingsPage({
       </nav>
       {section === "general" && (
         <>
-          <section className="surface">
-            <div className="section-head">
-              <h2>外观</h2>
-            </div>
-            <div className="settings-grid">
-              <label className="setting-row soft-card">
-                <span>字体</span>
-                <select
-                  value={settings.fontPreset}
-                  onChange={(event) =>
-                    onUpdateSettings({
-                      fontPreset: event.target
-                        .value as AppSettings["fontPreset"],
-                    })
-                  }
-                >
-                  <option value="system">系统字体</option>
-                  <option value="harmony">鸿蒙字体（需已安装）</option>
-                </select>
-              </label>
-              <label className="setting-row soft-card">
-                <span>界面密度</span>
-                <select
-                  value={settings.density}
-                  onChange={(event) =>
-                    onUpdateSettings({
-                      density: event.target.value as AppSettings["density"],
-                    })
-                  }
-                >
-                  <option value="auto">自动</option>
-                  <option value="compact">紧凑</option>
-                  <option value="standard">标准</option>
-                  <option value="comfortable">宽松</option>
-                </select>
-              </label>
-              <label className="setting-row soft-card">
-                <span>文字大小</span>
-                <select
-                  value={settings.scale}
-                  onChange={(event) =>
-                    onUpdateSettings({
-                      scale: event.target.value as AppSettings["scale"],
-                    })
-                  }
-                >
-                  <option value="auto">自动</option>
-                  <option value="compact">小</option>
-                  <option value="standard">标准</option>
-                  <option value="relaxed">大</option>
-                </select>
-              </label>
-            </div>
-          </section>
           <section className="surface">
             <div className="section-head">
               <h2>设备信息</h2>
@@ -172,7 +130,12 @@ export function SettingsPage({
                     className="soft-card installed-component-card"
                   >
                     <div className="history-item__top">
-                      <h3>{item.name}</h3>
+                      <div className="settings-component-name">
+                        {getComponentIconPath(item.id) && (
+                          <img src={getComponentIconPath(item.id)!} alt="" />
+                        )}
+                        <h3>{item.name}</h3>
+                      </div>
                       <span className="pill pill--success">
                         {item.statusLabel}
                       </span>
@@ -231,10 +194,15 @@ export function SettingsPage({
               <h2>第三方许可证</h2>
             </div>
             <div className="notice-grid">
-              {notices.map((notice) => (
+              {allNotices.map((notice) => (
                 <article className="soft-card notice-card" key={notice.id}>
                   <div className="history-item__top">
-                    <h3>{notice.name}</h3>
+                    <div className="settings-component-name">
+                      {getComponentIconPath(notice.id) && (
+                        <img src={getComponentIconPath(notice.id)!} alt="" />
+                      )}
+                      <h3>{notice.name}</h3>
+                    </div>
                     <small>{notice.licenseName}</small>
                   </div>
                   <div className="button-row">
@@ -244,10 +212,14 @@ export function SettingsPage({
                     >
                       来源
                     </button>
-                    {notice.licenseUrl && (
+                    {(notice.licenseUrl || notice.id === "harmonyos-sans") && (
                       <button
                         className="ghost-button"
-                        onClick={() => onOpenTarget(notice.licenseUrl!)}
+                        onClick={() =>
+                          notice.id === "harmonyos-sans"
+                            ? setFontLicenseOpen(true)
+                            : onOpenTarget(notice.licenseUrl!)
+                        }
                       >
                         许可证
                       </button>
@@ -264,6 +236,7 @@ export function SettingsPage({
           <img src="/brand-icon.png" alt="" width="64" height="64" />
           <h2>WinEase</h2>
           <p className="scope-note">Windows 工具箱 · {version}</p>
+          <p className="scope-note">界面使用 HarmonyOS Sans SC 鸿蒙字体</p>
           <div className="about-links">
             <button
               className="setting-line"
@@ -287,9 +260,7 @@ export function SettingsPage({
               className="setting-line"
               type="button"
               onClick={() =>
-                onOpenTarget(
-                  "https://github.com/soberbw-hash/WinEase/issues",
-                )
+                onOpenTarget("https://github.com/soberbw-hash/WinEase/issues")
               }
             >
               <span>反馈问题</span>
@@ -306,6 +277,30 @@ export function SettingsPage({
           </div>
         </section>
       )}
+      <Dialog.Root open={fontLicenseOpen} onOpenChange={setFontLicenseOpen}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="dialog-overlay" />
+          <Dialog.Content
+            className="font-license-dialog"
+            onOpenAutoFocus={() => {
+              licenseOrigin.current = document.activeElement as HTMLElement;
+            }}
+            onCloseAutoFocus={(event) => {
+              event.preventDefault();
+              licenseOrigin.current?.focus();
+            }}
+          >
+            <Dialog.Title>鸿蒙字体许可证</Dialog.Title>
+            <Dialog.Description className="scope-note">
+              HarmonyOS Sans SC · Huawei Device Co., Ltd.
+            </Dialog.Description>
+            <pre>{fontLicense}</pre>
+            <Dialog.Close asChild>
+              <button className="secondary-button">关闭</button>
+            </Dialog.Close>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
     </div>
   );
 }

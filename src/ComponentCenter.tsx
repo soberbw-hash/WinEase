@@ -9,6 +9,8 @@ type ComponentCenterProps = {
   items: ComponentManifest[];
   busyState: ComponentBusyState | null;
   hiddenIds?: string[];
+  captureHelperEnabled?: boolean;
+  onToggleCaptureHelper?: (enabled: boolean) => void;
   onManage: (componentId: string, operation: ComponentOperation) => void;
   onLaunch: (componentId: string) => void;
   onOpenTarget: (target: string) => void;
@@ -42,6 +44,8 @@ export function ComponentCenter({
   items,
   busyState,
   hiddenIds = [],
+  captureHelperEnabled = false,
+  onToggleCaptureHelper,
   onManage,
   onLaunch,
 }: ComponentCenterProps) {
@@ -151,6 +155,24 @@ export function ComponentCenter({
                       卸载
                     </button>
                   ) : null}
+                  {item.id === "capture-plus" &&
+                    item.installed &&
+                    onToggleCaptureHelper && (
+                      <label
+                        className="component-capture-toggle"
+                        title="F1 截图 · F3 贴图"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={captureHelperEnabled}
+                          disabled={busyState !== null}
+                          onChange={(event) =>
+                            onToggleCaptureHelper(event.target.checked)
+                          }
+                        />
+                        快捷键
+                      </label>
+                    )}
                 </div>
               </article>
             );

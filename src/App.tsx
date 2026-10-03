@@ -370,11 +370,9 @@ function App() {
           <SettingsPage
             snapshot={snapshot}
             onOpenDeviceInfo={() => setDrawerOpen(true)}
-            settings={settings}
             components={components}
             notices={notices}
             busyState={componentBusy}
-            onUpdateSettings={updateSettings}
             onEnterBossMode={() => void toggleBossMode(true)}
             onManageComponent={requestComponentOperation}
             onLaunchComponent={(id) => void manageComponent(id, "launch")}
@@ -386,12 +384,7 @@ function App() {
   }
   return (
     <>
-      <div
-        className="app-shell"
-        data-density={settings.density}
-        data-scale={settings.scale}
-        data-font={settings.fontPreset}
-      >
+      <div className="app-shell">
         <aside className="sidebar">
           <div className="sidebar__brand">
             <img src="/brand-icon.png" alt="" className="sidebar__logo-image" />

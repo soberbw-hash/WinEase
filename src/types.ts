@@ -161,8 +161,5 @@ export type BossModeViewState = {
 };
 
 export type AppSettings = {
-  density: "auto" | "compact" | "standard" | "comfortable";
-  scale: "auto" | "compact" | "standard" | "relaxed";
-  fontPreset: "harmony" | "system";
   captureHelperEnabled: boolean;
 };

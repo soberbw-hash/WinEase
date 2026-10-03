@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { ConfirmDialog } from "../ConfirmDialog";
+import { ApplicationIcon } from "../ApplicationIcon";
 import { formatBytes } from "../format";
 import type { ComponentManifest } from "../types";
 
@@ -214,6 +215,11 @@ export function ManagementPage({
         {tab === "uninstall" ? (
           <>
             <div className="setting-line">
+              <img
+                className="application-icon"
+                src="/component-icons/bcuninstaller.png"
+                alt=""
+              />
               <div>
                 <h3>BCUninstaller</h3>
                 <p className="scope-note">卸载应用并扫描残留文件、注册表项</p>
@@ -254,6 +260,7 @@ export function ManagementPage({
             <div className="manager-list">
               {startup.map((p, i) => (
                 <div className="manager-row" key={`${p.source}-${p.name}-${i}`}>
+                  <ApplicationIcon target={p.command} command />
                   <div className="manager-row__text">
                     <strong>{p.name}</strong>
                     <small title={p.command}>
@@ -305,6 +312,7 @@ export function ManagementPage({
             <div className="manager-list">
               {visible.map((p) => (
                 <div className="manager-row" key={p.windowId ?? p.pid}>
+                  <ApplicationIcon target={p.path} />
                   <div className="manager-row__text">
                     <strong>{tab === "popups" ? p.title : p.name}</strong>
                     <small title={p.path}>
@@ -365,6 +373,7 @@ export function ManagementPage({
           </p>
           {rules.rules.map((rule) => (
             <div className="manager-row" key={rule.id}>
+              <ApplicationIcon target={rule.path} />
               <div className="manager-row__text">
                 <strong>{rule.title}</strong>
                 <small title={rule.path}>{rule.path}</small>

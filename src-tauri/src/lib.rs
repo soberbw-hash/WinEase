@@ -1,3 +1,4 @@
+mod application_icons;
 mod cleaning;
 mod file_management;
 mod management;
@@ -2022,6 +2023,7 @@ pub fn run() {
             windows_settings::set_windows_setting,
             windows_settings::restore_windows_setting,
             management::list_processes,
+            application_icons::get_application_icon,
             management::list_application_windows,
             popups::list_popup_rules,
             popups::add_popup_rule,
