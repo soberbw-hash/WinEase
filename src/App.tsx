@@ -47,8 +47,8 @@ function App() {
   const [fileNavigation, setFileNavigation] = useState(0);
   const [history, setHistory] = useState<ToolActionResult[]>([]);
   const [, setRunningActionId] = useState<string | null>(null);
-  const [componentBusy, setComponentBusy] = useState<ComponentBusyState | null>(
-    null,
+  const [componentBusy, setComponentBusy] = useState<Record<string, ComponentBusyState>>(
+    {},
   );
   const [pendingUninstall, setPendingUninstall] = useState<string | null>(null);
   const [toast, setToast] = useState<{
@@ -61,7 +61,7 @@ function App() {
     getBossModeViewState(0),
   );
   const actionLock = useRef(false),
-    componentLock = useRef(false),
+    componentLock = useRef(new Set<string>()),
     snapshotLock = useRef(false);
   const bossTransition = useRef(false);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -143,8 +143,8 @@ function App() {
     componentId: string,
     operation: ComponentOperation | "launch",
   ) {
-    if (componentLock.current) return false;
-    componentLock.current = true;
+    if (componentLock.current.has(componentId)) return false;
+    componentLock.current.add(componentId);
     const labels = {
       install: "正在安装",
       repair: "正在修复",
@@ -153,12 +153,9 @@ function App() {
       update: "正在更新",
       launch: "正在打开",
     };
-    setComponentBusy({
-      componentId,
-      operation,
-      progress: 0,
-      stageLabel: labels[operation],
-    });
+    setComponentBusy(items => ({...items, [componentId]: {
+      componentId, operation, progress: 0, stageLabel: labels[operation],
+    }}));
     try {
       const result = await invoke<ToolActionResult>(
         operation === "launch" ? "launch_component" : "manage_component",
@@ -171,8 +168,8 @@ function App() {
       pushToast(String(error), true);
       return false;
     } finally {
-      componentLock.current = false;
-      setComponentBusy(null);
+      componentLock.current.delete(componentId);
+      setComponentBusy(items => { const next = {...items}; delete next[componentId]; return next; });
     }
   }
   function requestComponentOperation(
@@ -365,7 +362,7 @@ function App() {
           <ManagementPage
             initialTab={managementTab}
             components={components}
-            componentBusy={componentBusy !== null}
+            componentBusy={Boolean(componentBusy["uninstall-plus"])}
             onComponent={(id, installed) => {
               void (async () => {
                 if (installed || (await manageComponent(id, "install")))

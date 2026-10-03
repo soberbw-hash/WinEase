@@ -17,15 +17,13 @@ struct Definition {
     on: u32,
     off: u32,
 }
-const DEFINITIONS: [Definition; 1] = [
-    Definition {
-        id: "hidden-files",
-        label: "显示隐藏文件",
-        name: "Hidden",
-        on: 1,
-        off: 2,
-    },
-];
+const DEFINITIONS: [Definition; 1] = [Definition {
+    id: "hidden-files",
+    label: "显示隐藏文件",
+    name: "Hidden",
+    on: 1,
+    off: 2,
+}];
 fn definition(id: &str) -> Result<&'static Definition, String> {
     DEFINITIONS
         .iter()

@@ -17,7 +17,7 @@ type Props = {
   onOpenDeviceInfo: () => void;
   components: ComponentManifest[];
   notices: ThirdPartyNotice[];
-  busyState: ComponentBusyState | null;
+  busyState: Record<string, ComponentBusyState>;
   onEnterBossMode: () => void;
   onManageComponent: (id: string, operation: ComponentOperation) => void;
   onLaunchComponent: (id: string) => void;
@@ -140,14 +140,14 @@ export function SettingsPage({
                         {item.statusLabel}
                       </span>
                     </div>
-                    {busyState?.componentId === item.id && (
-                      <p role="status">{busyState.stageLabel}…</p>
+                    {Boolean(busyState[item.id]) && (
+                      <p role="status">{busyState[item.id]?.stageLabel}…</p>
                     )}
                     <div className="button-row">
                       <button
                         className="secondary-button"
                         type="button"
-                        disabled={busyState !== null}
+                        disabled={Boolean(busyState[item.id])}
                         onClick={() => onLaunchComponent(item.id)}
                       >
                         打开
@@ -156,7 +156,7 @@ export function SettingsPage({
                         <button
                           className="ghost-button"
                           type="button"
-                          disabled={busyState !== null}
+                          disabled={Boolean(busyState[item.id])}
                           onClick={() => onManageComponent(item.id, "repair")}
                         >
                           修复
@@ -166,7 +166,7 @@ export function SettingsPage({
                         <button
                           className="ghost-button"
                           type="button"
-                          disabled={busyState !== null}
+                          disabled={Boolean(busyState[item.id])}
                           onClick={() =>
                             onManageComponent(item.id, "uninstall")
                           }

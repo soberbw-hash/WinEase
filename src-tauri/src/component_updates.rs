@@ -3,9 +3,32 @@ use crate::{
     list_components_internal, ToolActionResult,
 };
 use serde::Serialize;
+use std::collections::HashSet;
+use std::sync::LazyLock;
 use std::sync::Mutex;
 use std::time::Instant;
 static LOCK: Mutex<()> = Mutex::new(());
+static TASKS: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(|| Mutex::new(HashSet::new()));
+pub(crate) struct ComponentTask(String);
+impl Drop for ComponentTask {
+    fn drop(&mut self) {
+        if let Ok(mut tasks) = TASKS.lock() {
+            tasks.remove(&self.0);
+        }
+    }
+}
+pub(crate) fn begin_component_task(id: &str) -> Result<ComponentTask, String> {
+    // This guard only reserves a task slot; each operation validates its fixed catalog ID.
+    // Do not enumerate installed packages here: that would delay opening unrelated apps.
+    if id.is_empty() || id.len() > 128 || !id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-') {
+        return Err("无效组件标识。".into());
+    }
+    let mut tasks = TASKS.lock().map_err(|e| e.to_string())?;
+    if !tasks.insert(id.to_owned()) {
+        return Err("此组件已有任务正在进行。".into());
+    }
+    Ok(ComponentTask(id.to_owned()))
+}
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ComponentUpdate {
@@ -89,7 +112,6 @@ pub async fn check_component_updates() -> Result<Vec<ComponentUpdate>, String> {
     .map_err(|e| e.to_string())?
 }
 pub fn update_component(id: &str) -> Result<ToolActionResult, String> {
-    let _guard = LOCK.try_lock().map_err(|_| "组件更新任务正在进行")?;
     let started = Instant::now();
     let component = list_components_internal()
         .into_iter()
@@ -132,6 +154,17 @@ pub fn update_component(id: &str) -> Result<ToolActionResult, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn different_components_can_run_and_same_component_is_rejected() {
+        let first = begin_component_task("capture-plus").unwrap();
+        let second = begin_component_task("uninstall-plus").unwrap();
+        assert!(begin_component_task("capture-plus").is_err());
+        drop(second);
+        assert!(begin_component_task("capture-plus").is_err());
+        drop(first);
+        assert!(begin_component_task("capture-plus").is_ok());
+        assert!(begin_component_task("../component").is_err());
+    }
     #[test]
     #[ignore = "read-only winget availability check; never updates installed packages"]
     fn real_winget_output_can_be_read_with_timeout() {

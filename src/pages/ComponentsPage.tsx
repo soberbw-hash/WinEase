@@ -7,7 +7,7 @@ import type {
 
 type ComponentsPageProps = {
   components: ComponentManifest[];
-  busyState: ComponentBusyState | null;
+  busyState: Record<string, ComponentBusyState>;
   captureHelperEnabled: boolean;
   onToggleCaptureHelper: (nextEnabled: boolean) => void;
   onManageComponent: (

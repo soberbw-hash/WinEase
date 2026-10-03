@@ -1842,9 +1842,12 @@ async fn run_tool_action(
 
 #[tauri::command]
 async fn launch_component(component_id: String) -> Result<ToolActionResult, String> {
-    tauri::async_runtime::spawn_blocking(move || launch_component_internal(&component_id))
-        .await
-        .map_err(|error| format!("启动组件任务失败：{error}"))?
+    tauri::async_runtime::spawn_blocking(move || {
+        let _task = component_updates::begin_component_task(&component_id)?;
+        launch_component_internal(&component_id)
+    })
+    .await
+    .map_err(|error| format!("启动组件任务失败：{error}"))?
 }
 
 #[tauri::command]
@@ -1852,13 +1855,16 @@ async fn manage_component(
     component_id: String,
     operation: String,
 ) -> Result<ToolActionResult, String> {
-    tauri::async_runtime::spawn_blocking(move || match operation.as_str() {
-        "install" => install_component_internal(&component_id),
-        "repair" => repair_component_internal(&component_id),
-        "uninstall" => uninstall_component_internal(&component_id),
-        "update" => component_updates::update_component(&component_id),
-        "disable" => disable_component_internal(&component_id),
-        _ => Err(format!("未知组件操作：{operation}")),
+    tauri::async_runtime::spawn_blocking(move || {
+        let _task = component_updates::begin_component_task(&component_id)?;
+        match operation.as_str() {
+            "install" => install_component_internal(&component_id),
+            "repair" => repair_component_internal(&component_id),
+            "uninstall" => uninstall_component_internal(&component_id),
+            "update" => component_updates::update_component(&component_id),
+            "disable" => disable_component_internal(&component_id),
+            _ => Err(format!("未知组件操作：{operation}")),
+        }
     })
     .await
     .map_err(|error| format!("组件管理任务失败：{error}"))?

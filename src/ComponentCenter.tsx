@@ -7,7 +7,7 @@ import type {
 
 type ComponentCenterProps = {
   items: ComponentManifest[];
-  busyState: ComponentBusyState | null;
+  busyState: Record<string, ComponentBusyState>;
   hiddenIds?: string[];
   captureHelperEnabled?: boolean;
   onToggleCaptureHelper?: (enabled: boolean) => void;
@@ -66,7 +66,8 @@ export function ComponentCenter({
       ) : (
         <div className="component-grid">
           {visibleItems.map((item) => {
-            const isBusy = busyState?.componentId === item.id;
+            const task = busyState[item.id];
+            const isBusy = Boolean(task);
             const primary = getPrimaryAction(item);
             const iconPath = getComponentIconPath(item.id);
 
@@ -109,7 +110,7 @@ export function ComponentCenter({
                 {isBusy ? (
                   <div className="component-progress">
                     <div className="component-progress__head">
-                      <span>{busyState?.stageLabel}</span>
+                      <span>{task?.stageLabel}</span>
                     </div>
                   </div>
                 ) : null}
@@ -120,7 +121,7 @@ export function ComponentCenter({
                       item.installed ? "secondary-button" : "primary-button"
                     }
                     type="button"
-                    disabled={busyState !== null}
+                    disabled={isBusy}
                     onClick={() => {
                       if (primary.operation) {
                         onManage(item.id, primary.operation);
@@ -152,7 +153,7 @@ export function ComponentCenter({
                           ? "secondary-button"
                           : "ghost-button"
                       }
-                      disabled={busyState !== null}
+                      disabled={isBusy}
                       onClick={() => onManage(item.id, "update")}
                       title={
                         item.availableVersion
@@ -183,7 +184,7 @@ export function ComponentCenter({
                         <input
                           type="checkbox"
                           checked={captureHelperEnabled}
-                          disabled={busyState !== null}
+                          disabled={isBusy}
                           onChange={(event) =>
                             onToggleCaptureHelper(event.target.checked)
                           }
