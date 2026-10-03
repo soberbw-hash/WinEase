@@ -76,6 +76,28 @@ fn resolve_target(target: &str, command: bool) -> Option<PathBuf> {
 
 fn load(target: &str, command: bool) -> Option<String> {
     let path = resolve_target(target, command)?;
+    load_path(path)
+}
+fn local_file_path(target: &str) -> Option<PathBuf> {
+    let value = target.strip_prefix(r"\\?\").unwrap_or(target);
+    let bytes = value.as_bytes();
+    if bytes.len() < 4
+        || !bytes[0].is_ascii_alphabetic()
+        || bytes[1] != b':'
+        || !matches!(bytes[2], b'\\' | b'/')
+        || value.contains('\0')
+        || value.len() > 4096
+    {
+        return None;
+    }
+    // Reject alternate streams and never follow a junction or access remote shares.
+    if value[2..].contains(':') {
+        return None;
+    }
+    let path = PathBuf::from(value);
+    (crate::cleaning::no_reparse_ancestors(&path) && path.is_file()).then_some(path)
+}
+fn load_path(path: PathBuf) -> Option<String> {
     let metadata = path.metadata().ok()?;
     let key = path.to_string_lossy().to_lowercase();
     let modified = metadata.modified().ok();
@@ -130,10 +152,36 @@ pub async fn get_application_icon(target: String, command: bool) -> Result<Optio
         .await
         .map_err(|error| error.to_string())
 }
+#[tauri::command]
+pub async fn get_file_icon(target: String) -> Result<Option<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || local_file_path(&target).and_then(load_path))
+        .await
+        .map_err(|error| error.to_string())
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn scanned_file_icons_accept_local_extended_paths_and_reject_remote_streams() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("sample.safetensors");
+        std::fs::write(&path, b"fixture").unwrap();
+        let local = path.to_string_lossy();
+        assert!(local_file_path(&local).is_some());
+        assert!(local_file_path(&format!(r"\\?\{local}")).is_some());
+        for remote in [
+            r"\\server\share\file.pdf",
+            r"\\?\UNC\server\file.pdf",
+            "https://example.com/file.pdf",
+            r"C:\file.pdf:stream",
+        ] {
+            assert!(local_file_path(remote).is_none());
+        }
+        assert!(load_path(path)
+            .expect("Windows file icon")
+            .starts_with("data:image/png;base64,"));
+    }
     #[test]
     fn command_resolution_ignores_arguments_and_accepts_spaces() {
         let dir = tempfile::tempdir().unwrap();

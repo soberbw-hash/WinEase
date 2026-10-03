@@ -20,7 +20,21 @@ static SEQUENCE: AtomicU64 = AtomicU64::new(0);
 pub struct FileState {
     scan: Mutex<Vec<Scan>>,
     busy: AtomicBool,
+    jobs: [ScanJob; 2],
+}
+#[derive(Default)]
+struct ScanJob {
+    busy: AtomicBool,
     cancel: Arc<AtomicBool>,
+}
+impl FileState {
+    fn cancel_jobs(&self, duplicates: Option<bool>) {
+        for (index, job) in self.jobs.iter().enumerate() {
+            if duplicates.is_none_or(|mode| usize::from(mode) == index) {
+                job.cancel.store(true, Ordering::SeqCst);
+            }
+        }
+    }
 }
 struct BusyGuard<'a>(&'a AtomicBool);
 impl Drop for BusyGuard<'_> {
@@ -453,13 +467,14 @@ pub async fn scan_personal_files(
     duplicates: bool,
     state: tauri::State<'_, FileState>,
 ) -> Result<FileScan, String> {
-    if state.busy.swap(true, Ordering::SeqCst) {
+    let job = &state.jobs[usize::from(duplicates)];
+    if job.busy.swap(true, Ordering::SeqCst) {
         return Err("扫描正在进行。".into());
     }
-    let _guard = BusyGuard(&state.busy);
-    state.cancel.store(false, Ordering::SeqCst);
+    let _guard = BusyGuard(&job.busy);
+    job.cancel.store(false, Ordering::SeqCst);
 
-    let cancel = state.cancel.clone();
+    let cancel = job.cancel.clone();
     let (scan, skipped, limited, usage, total_bytes, breakdown) =
         tauri::async_runtime::spawn_blocking(move || {
             scan_files(PathBuf::from(root), duplicates, &cancel)
@@ -506,8 +521,8 @@ pub async fn scan_personal_files(
     Ok(result)
 }
 #[tauri::command]
-pub fn cancel_file_scan(state: tauri::State<'_, FileState>) {
-    state.cancel.store(true, Ordering::SeqCst);
+pub fn cancel_file_scan(duplicates: Option<bool>, state: tauri::State<'_, FileState>) {
+    state.cancel_jobs(duplicates);
 }
 fn validate_selection(scan: &Scan, ids: &[usize]) -> Result<Vec<Candidate>, String> {
     if scan.created.elapsed() > Duration::from_secs(900) {
@@ -599,6 +614,25 @@ ConvertTo-Json -InputObject @($folders | Where-Object { $_ -and (Test-Path -Lite
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn scan_lanes_run_together_and_cancel_independently() {
+        let state = FileState::default();
+        assert!(!state.jobs[0].busy.swap(true, Ordering::SeqCst));
+        let first = BusyGuard(&state.jobs[0].busy);
+        assert!(!state.jobs[1].busy.swap(true, Ordering::SeqCst));
+        let second = BusyGuard(&state.jobs[1].busy);
+        assert!(state.jobs[0].busy.swap(true, Ordering::SeqCst));
+        state.cancel_jobs(Some(true));
+        assert!(!state.jobs[0].cancel.load(Ordering::SeqCst));
+        assert!(state.jobs[1].cancel.load(Ordering::SeqCst));
+        drop(second);
+        assert!(state.jobs[0].busy.load(Ordering::SeqCst));
+        assert!(!state.jobs[1].busy.load(Ordering::SeqCst));
+        state.cancel_jobs(None);
+        assert!(state.jobs[0].cancel.load(Ordering::SeqCst));
+        drop(first);
+        assert!(!state.jobs[0].busy.load(Ordering::SeqCst));
+    }
     fn candidate(path: PathBuf, group: Option<usize>) -> Candidate {
         let m = fs::metadata(&path).unwrap();
         Candidate {

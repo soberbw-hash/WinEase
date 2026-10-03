@@ -3,6 +3,7 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import { formatBytes } from "../format";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { DiskMap, type UsageNode } from "../DiskMap";
+import { ApplicationIcon } from "../ApplicationIcon";
 type Row = {
   id: number;
   name: string;
@@ -75,6 +76,15 @@ export function fileKind(name: string) {
     return "audio";
   return "other";
 }
+function fileTypeBadge(name: string) {
+  const extension = name.includes(".") ? name.split(".").pop()!.toLowerCase() : "";
+  if (["safetensors", "gguf", "onnx", "pt", "pth"].includes(extension)) return "模型";
+  return extension ? extension.slice(0, 5).toUpperCase() : "文件";
+}
+function fileTypeLabel(name: string) {
+  const extension = name.includes(".") ? name.split(".").pop()!.toLowerCase() : "";
+  return fileTypeBadge(name) === "模型" ? `AI 模型文件（.${extension}）` : extension ? `.${extension} 文件` : "文件";
+}
 export function FilesPage({
   initialDuplicates,
   navigationRequest = 0,
@@ -89,34 +99,27 @@ export function FilesPage({
   );
   const [drives, setDrives] = useState<Drive[]>([]),
     [root, setRoot] = useState("");
-  const [scan, setScan] = useState<Scan | null>(null),
-    [scanDuplicates, setScanDuplicates] = useState(false);
-  const [selected, setSelected] = useState<number[]>([]),
-    [busy, setBusy] = useState<"scan" | "recycle" | null>(null);
-  const [error, setError] = useState(""),
-    [message, setMessage] = useState(""),
-    [confirm, setConfirm] = useState(false);
+  const [tasks, setTasks] = useState<Record<string, { scan?: Scan; busy?: "scan" | "recycle" | null; error?: string; message?: string }>>({});
+  const [selected, setSelected] = useState<number[]>([]);
+  const [confirm, setConfirm] = useState(false);
   const [kind, setKind] = useState("all"),
     [minimum, setMinimum] = useState(10 * 1024 * 1024),
     [search, setSearch] = useState(""),
     [page, setPage] = useState(0);
-  const results = useRef(new Map<string, Scan>());
-  const cacheKey = (drive: string, duplicates: boolean) =>
-    `${drive.toLowerCase()}:${duplicates}`;
-  const lock = useRef(false),
-    mounted = useRef(true);
+  const cacheKey = (drive: string, duplicates: boolean) => `${drive.toLowerCase()}:${duplicates}`;
+  const scanDuplicates = view === "duplicates";
+  const key = cacheKey(root, scanDuplicates);
+  const current = tasks[key] ?? {};
+  const scan = current.scan ?? null, busy = current.busy ?? null;
+  const error = current.error ?? "", message = current.message ?? "";
+  const locks = useRef(new Set<string>()), mounted = useRef(true);
+  function updateTask(taskKey: string, patch: Partial<typeof current>) {
+    setTasks(items => ({...items, [taskKey]: {...items[taskKey], ...patch}}));
+  }
   useEffect(() => {
-    if (lock.current) return;
-    setView(
-      initialDuplicates
-        ? "duplicates"
-        : navigationRequest
-          ? "large"
-          : "overview",
-    );
-    setScan(results.current.get(cacheKey(root, initialDuplicates)) ?? null);
-    setScanDuplicates(initialDuplicates);
+    setView(initialDuplicates ? "duplicates" : navigationRequest ? "large" : "overview");
     setSelected([]);
+    setConfirm(false);
   }, [initialDuplicates, navigationRequest]);
   useEffect(() => {
     mounted.current = true;
@@ -132,53 +135,37 @@ export function FilesPage({
             );
           }
         })
-        .catch((e) => setError(String(e)));
+        .catch(() => {});
     return () => {
       mounted.current = false;
-      if (lock.current) void invoke("cancel_file_scan");
+      if (locks.current.size) void invoke("cancel_file_scan");
     };
   }, []);
   async function start() {
-    if (lock.current || !root) return;
-    lock.current = true;
-    setBusy("scan");
-    setError("");
-    setMessage("");
-    setScan(null);
+    // One volume-statistics task and one duplicate task may run together.
+    const lane = String(scanDuplicates);
+    if (locks.current.has(lane) || !root) return;
+    locks.current.add(lane);
+    const taskKey = key;
+    updateTask(taskKey, {busy: "scan", error: "", message: ""});
     setSelected([]);
     setPage(0);
-    const duplicates = view === "duplicates";
     try {
-      const next = await invoke<Scan>("scan_personal_files", {
-        root,
-        duplicates,
-      });
+      const next = await invoke<Scan>("scan_personal_files", {root, duplicates: scanDuplicates});
       if (mounted.current) {
-        results.current.set(cacheKey(root, duplicates), next);
-        setScan(next);
-        setScanDuplicates(duplicates);
-        void invoke<Drive[]>("storage_drives")
-          .then(setDrives)
-          .catch(() => {});
+        updateTask(taskKey, {scan: next});
+        void invoke<Drive[]>("storage_drives").then(setDrives).catch(() => {});
       }
     } catch (e) {
-      if (mounted.current) {
-        setError(String(e));
-        setScan(results.current.get(cacheKey(root, duplicates)) ?? null);
-      }
+      if (mounted.current) updateTask(taskKey, {error: String(e)});
     } finally {
-      lock.current = false;
-      if (mounted.current) setBusy(null);
+      locks.current.delete(lane);
+      if (mounted.current) updateTask(taskKey, {busy: null});
     }
   }
   function changeView(next: View) {
-    if ((next === "duplicates") !== scanDuplicates) {
-      setScan(
-        results.current.get(cacheKey(root, next === "duplicates")) ?? null,
-      );
-      setScanDuplicates(next === "duplicates");
-      setSelected([]);
-    }
+    setSelected([]);
+    setConfirm(false);
     setView(next);
     setPage(0);
     setSearch("");
@@ -186,25 +173,19 @@ export function FilesPage({
   }
   async function recycle() {
     setConfirm(false);
-    if (!scan || lock.current) return;
-    lock.current = true;
-    setBusy("recycle");
-    setError("");
+    if (!scan || busy || locks.current.has("recycle")) return;
+    locks.current.add("recycle");
+    const taskKey = key;
+    updateTask(taskKey, {busy: "recycle", error: ""});
     try {
-      setMessage(
-        await invoke<string>("recycle_selected_files", {
-          scanId: scan.scanId,
-          ids: selected,
-        }),
-      );
+      const result = await invoke<string>("recycle_selected_files", {scanId: scan.scanId, ids: selected});
+      updateTask(taskKey, {message: result});
     } catch (e) {
-      setError(String(e));
+      updateTask(taskKey, {error: String(e)});
     } finally {
-      results.current.delete(cacheKey(root, scanDuplicates));
-      setScan(null);
+      updateTask(taskKey, {scan: undefined, busy: null});
       setSelected([]);
-      setBusy(null);
-      lock.current = false;
+      locks.current.delete("recycle");
     }
   }
   const groups = new Map<number, Row[]>();
@@ -260,8 +241,11 @@ export function FilesPage({
           disabled={busy !== null || !file.canRecycle}
           onChange={(e) => toggle(file, e.target.checked)}
         />
-        <span className="file-kind-icon" aria-hidden="true">
-          {types.find((t) => t[0] === fileKind(file.name))?.[2]}
+        <span className="storage-file-icon" title={fileTypeLabel(file.name)}>
+          <ApplicationIcon target={file.path} file fallback={
+            <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M5 2h9l5 5v15H5zM14 2v6h5M8 13h8M8 17h6" /></svg>
+          } />
+          <small>{fileTypeBadge(file.name)}</small>
         </span>
         <strong title={file.name}>
           {file.name}
@@ -289,25 +273,25 @@ export function FilesPage({
     <div className="page-stack">
       <nav className="subnav" aria-label="空间管理">
         <button
-          disabled={busy !== null}
+          disabled={busy === "recycle"}
           aria-pressed={view === "overview"}
           onClick={() => changeView("overview")}
         >
-          ▥ 存储概览
+          ▥ 存储概览{tasks[cacheKey(root, false)]?.busy === "scan" ? " · 扫描中" : ""}
         </button>
         <button
-          disabled={busy !== null}
+          disabled={busy === "recycle"}
           aria-pressed={view === "large"}
           onClick={() => changeView("large")}
         >
-          ▤ 大文件
+          ▤ 大文件{tasks[cacheKey(root, false)]?.busy === "scan" ? " · 扫描中" : ""}
         </button>
         <button
-          disabled={busy !== null}
+          disabled={busy === "recycle"}
           aria-pressed={view === "duplicates"}
           onClick={() => changeView("duplicates")}
         >
-          ▣ 重复文件
+          ▣ 重复文件{tasks[cacheKey(root, true)]?.busy === "scan" ? " · 扫描中" : ""}
         </button>
       </nav>
       <section className="surface storage-surface">
@@ -335,11 +319,6 @@ export function FilesPage({
               disabled={busy !== null}
               onChange={(e) => {
                 setRoot(e.target.value);
-                setScan(
-                  results.current.get(
-                    cacheKey(e.target.value, view === "duplicates"),
-                  ) ?? null,
-                );
                 setSelected([]);
               }}
             >
@@ -351,9 +330,9 @@ export function FilesPage({
             </select>
             <button
               className="primary-button"
-              disabled={busy === "recycle" || !root}
+              disabled={busy === "recycle" || !root || (busy !== "scan" && Object.entries(tasks).some(([id, task]) => id.endsWith(`:${scanDuplicates}`) && task.busy === "scan"))}
               onClick={() =>
-                busy === "scan" ? void invoke("cancel_file_scan") : void start()
+                busy === "scan" ? void invoke("cancel_file_scan", {duplicates: scanDuplicates}) : void start()
               }
             >
               {busy === "scan" ? "停止扫描" : scan ? "重新扫描" : "开始扫描"}
@@ -548,6 +527,7 @@ export function FilesPage({
                     <details className="duplicate-group" key={id} open>
                       <summary>
                         <span aria-hidden="true">⌄</span>
+                        <ApplicationIcon target={files[0].path} file />
                         <strong>{files[0].name}</strong>
                         <span>
                           {files.length} 份 · 可移除{" "}

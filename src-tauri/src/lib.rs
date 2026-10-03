@@ -1924,6 +1924,7 @@ pub fn run() {
             windows_settings::restore_windows_setting,
             management::list_processes,
             application_icons::get_application_icon,
+            application_icons::get_file_icon,
             management::list_application_windows,
             popups::list_popup_rules,
             popups::add_popup_rule,
