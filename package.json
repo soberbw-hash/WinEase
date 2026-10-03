@@ -1,10 +1,11 @@
 {
-  "name": "win-toolbox",
+  "name": "winease",
   "private": true,
   "version": "3.5.0",
   "description": "极简 Windows 工具箱：清理、空间管理、系统维护与常用设置。",
   "type": "module",
   "scripts": {
+    "brand:generate": "powershell -ExecutionPolicy Bypass -File scripts/generate-brand-assets.ps1",
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",

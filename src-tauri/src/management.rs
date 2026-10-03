@@ -37,7 +37,7 @@ $rows=@([ToolboxWindows]::List() | ForEach-Object {{
  try {{
   $p=Get-Process -Id $_.pid -ErrorAction Stop
   if($p.SessionId -eq $me.SessionId) {{
-   $path=$p.Path; $protected=(!$path -or $path.StartsWith($env:windir,[StringComparison]::OrdinalIgnoreCase) -or $p.Id -eq $me.Id -or $p.ProcessName -match '^(explorer|win-toolbox|powershell|pwsh|dwm|csrss|winlogon|services|lsass|svchost|sihost|fontdrvhost)$')
+   $path=$p.Path; $protected=(!$path -or $path.StartsWith($env:windir,[StringComparison]::OrdinalIgnoreCase) -or $p.Id -eq $me.Id -or $p.ProcessName -match '^(explorer|winease|win-toolbox|powershell|pwsh|dwm|csrss|winlogon|services|lsass|svchost|sihost|fontdrvhost)$')
    [pscustomobject]@{{pid=$p.Id;name=$p.ProcessName;memoryBytes=$p.WorkingSet64;path=$path;stamp=[string]$p.StartTime.ToUniversalTime().Ticks;title=$_.title;windowId=[string]$_.windowId;canEnd=!$protected}}
   }}
  }} catch {{}}
@@ -65,7 +65,7 @@ $me = Get-Process -Id {}
 $rows = @(Get-Process | Where-Object {{ $_.SessionId -eq $me.SessionId }} | ForEach-Object {{
  try {{
   $path = $_.Path; $stamp = [string]$_.StartTime.ToUniversalTime().Ticks
-  $protected = (!$path -or $path.StartsWith($env:windir, [StringComparison]::OrdinalIgnoreCase) -or $_.Id -eq $me.Id -or $_.ProcessName -match '^(explorer|win-toolbox|powershell|pwsh|dwm|csrss|winlogon|services|lsass|svchost|sihost|fontdrvhost)$')
+  $protected = (!$path -or $path.StartsWith($env:windir, [StringComparison]::OrdinalIgnoreCase) -or $_.Id -eq $me.Id -or $_.ProcessName -match '^(explorer|winease|win-toolbox|powershell|pwsh|dwm|csrss|winlogon|services|lsass|svchost|sihost|fontdrvhost)$')
   [pscustomobject]@{{ pid = $_.Id; name = $_.ProcessName; memoryBytes = $_.WorkingSet64; path = $path; stamp = $stamp; title = [string]$_.MainWindowTitle; canEnd = !$protected }}
  }} catch {{}}
 }} | Sort-Object memoryBytes -Descending)
@@ -111,7 +111,7 @@ if([ToolboxWindows]::SendMessageTimeout($hwnd,0x10,[IntPtr]::Zero,[IntPtr]::Zero
 $ErrorActionPreference = 'Stop'
 $p = Get-Process -Id {pid}
 $me = Get-Process -Id {}
-if ([string]$p.StartTime.ToUniversalTime().Ticks -ne {} -or $p.SessionId -ne $me.SessionId -or !$p.Path -or $p.Path.StartsWith($env:windir,[StringComparison]::OrdinalIgnoreCase) -or $p.ProcessName -match '^(explorer|win-toolbox|powershell|pwsh|dwm|csrss|winlogon|services|lsass|svchost|sihost|fontdrvhost)$') {{ throw '进程已变化或受到保护，请刷新列表' }}
+if ([string]$p.StartTime.ToUniversalTime().Ticks -ne {} -or $p.SessionId -ne $me.SessionId -or !$p.Path -or $p.Path.StartsWith($env:windir,[StringComparison]::OrdinalIgnoreCase) -or $p.ProcessName -match '^(explorer|winease|win-toolbox|powershell|pwsh|dwm|csrss|winlogon|services|lsass|svchost|sihost|fontdrvhost)$') {{ throw '进程已变化或受到保护，请刷新列表' }}
 {}
 'true'
 "#, std::process::id(), ps_string(&stamp), close)).await?;

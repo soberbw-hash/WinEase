@@ -1,6 +1,8 @@
-# Win Toolbox
+# WinEase
 
 极简 Windows 工具箱：清理、空间管理、应用管理与常用系统设置。
+
+品牌原图与图标生成方式见 [品牌资源](docs/branding/README.md)。
 
 ## v3.5.0
 

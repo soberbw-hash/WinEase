@@ -36,11 +36,11 @@ button:disabled {
 button:focus-visible,
 input:focus-visible,
 select:focus-visible {
-  outline: 2px solid #2563eb;
+  outline: 2px solid #0874cf;
   outline-offset: 3px;
 }
 input[type="checkbox"] {
-  accent-color: #2563eb;
+  accent-color: #0874cf;
   width: 16px;
   height: 16px;
   margin: 0 10px 0 0;
@@ -77,7 +77,7 @@ code {
   --text-main: #202124;
   --text-soft: #68707c;
   --text-faint: #89909a;
-  --accent: #2563eb;
+  --accent: #0874cf;
   --font-stack:
     "Segoe UI Variable Text", "Microsoft YaHei UI", "Segoe UI", sans-serif;
   --font-size-base: 14px;
@@ -131,8 +131,9 @@ code {
   min-width: 0;
 }
 .sidebar__logo-image {
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
   flex-shrink: 0;
 }
 .sidebar__brand h1 {
@@ -167,7 +168,7 @@ code {
 }
 .sidebar__nav-item--active {
   background: #e8efff;
-  color: #1d4ed8;
+  color: #0867b6;
 }
 .sidebar__nav-item--active strong {
   font-weight: 650;
@@ -305,16 +306,16 @@ code {
   border-color: #b9c8e8;
 }
 .home-action--primary {
-  background: #2563eb;
-  border-color: #2563eb;
+  background: #0874cf;
+  border-color: #0874cf;
   color: #fff;
 }
 .home-action--primary span {
   color: #e2ebff;
 }
 .home-action--primary:hover {
-  background: #1d4ed8;
-  border-color: #1d4ed8;
+  background: #0867b6;
+  border-color: #0867b6;
 }
 .stat-strip {
   display: grid;
@@ -350,12 +351,12 @@ code {
   white-space: nowrap;
 }
 .primary-button {
-  background: #2563eb;
+  background: #0874cf;
   color: #fff;
-  border-color: #2563eb;
+  border-color: #0874cf;
 }
 .primary-button:hover {
-  background: #1d4ed8;
+  background: #0867b6;
 }
 .secondary-button {
   background: #fff;
@@ -494,7 +495,7 @@ code {
   color: #425773;
 }
 .component-progress {
-  color: #2563eb;
+  color: #0874cf;
   font-size: 12px;
 }
 .component-progress__head {
@@ -565,7 +566,7 @@ code {
 }
 .subnav button[aria-pressed="true"] {
   background: #e8efff;
-  color: #1d4ed8;
+  color: #0867b6;
 }
 .setting-row {
   display: grid;

@@ -261,8 +261,8 @@ export function SettingsPage({
       )}
       {section === "about" && (
         <section className="surface about-panel">
-          <img src="/app-mark.svg" alt="" width="64" height="64" />
-          <h2>Win Toolbox</h2>
+          <img src="/brand-icon.png" alt="" width="64" height="64" />
+          <h2>WinEase</h2>
           <p className="scope-note">Windows 工具箱 · {version}</p>
           <div className="about-links">
             <button
@@ -277,7 +277,7 @@ export function SettingsPage({
               className="setting-line"
               type="button"
               onClick={() =>
-                onOpenTarget("https://github.com/soberbw-hash/win-toolbox")
+                onOpenTarget("https://github.com/soberbw-hash/WinEase")
               }
             >
               <span>项目仓库</span>
@@ -288,7 +288,7 @@ export function SettingsPage({
               type="button"
               onClick={() =>
                 onOpenTarget(
-                  "https://github.com/soberbw-hash/win-toolbox/issues",
+                  "https://github.com/soberbw-hash/WinEase/issues",
                 )
               }
             >

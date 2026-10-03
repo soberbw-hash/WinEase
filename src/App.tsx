@@ -394,9 +394,9 @@ function App() {
       >
         <aside className="sidebar">
           <div className="sidebar__brand">
-            <img src="/app-mark.svg" alt="" className="sidebar__logo-image" />
+            <img src="/brand-icon.png" alt="" className="sidebar__logo-image" />
             <div>
-              <h1>Win Toolbox</h1>
+              <h1>WinEase</h1>
               <p className="sidebar__product-label">Windows 工具箱</p>
             </div>
           </div>

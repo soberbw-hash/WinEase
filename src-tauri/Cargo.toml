@@ -1,12 +1,12 @@
 [package]
-name = "win-toolbox"
+name = "winease"
 version = "3.5.0"
-description = "给中文用户做的极简 Windows 效率控制台。"
+description = "WinEase 极简 Windows 工具箱。"
 authors = ["soberbw-hash"]
 edition = "2021"
 
 [lib]
-name = "win_toolbox_lib"
+name = "winease_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

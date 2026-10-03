@@ -1,5 +1,13 @@
 # v3.5 优化审查
 
+## WinEase 品牌
+
+软件、窗口、npm/Cargo 项目、GitHub 仓库和安装包更名为 WinEase。界面采用与用户图标协调的蓝色强调色，保留极简布局。侧栏、关于页、favicon、应用 EXE、安装和卸载程序统一使用用户提供的工具箱图案。
+
+原图按字节保存于 `docs/branding/icon-master.png`，安装包附带 `branding/` 原图与说明；生成脚本校验 SHA-256，使用 Tauri 官方工具生成多尺寸资源。旧配置键、数据目录和注册表备份位置继续兼容，进程保护覆盖新旧 EXE 名称。
+
+更名后的 19 项 Rust 测试、前端生产构建和 NSIS 打包通过。真实打包程序的窗口标题、首页、关于页、图标加载及无横向溢出已检查；从 EXE 和安装程序提取的图标已人工查看，NSIS 脚本确认原图打包路径与安装/卸载图标设置。
+
 ## 技术选择
 
 继续使用 Tauri 2 + Rust + WebView2 Evergreen。工具箱需要调用 Windows 系统接口和扫描文件，Rust 负责校验与执行，WebView2 负责界面。当前升级 Tauri 2.12.1、tauri-build 2.7.1、opener 2.7.0、React 19.3、Vite 8、TypeScript 7，并更新锁文件。安装包明确使用 WebView2 Evergreen bootstrapper。

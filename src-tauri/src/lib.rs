@@ -1228,7 +1228,7 @@ fn launch_component_internal(component_id: &str) -> Result<ToolActionResult, Str
             component.summary,
             component.install_dir,
             vec![String::from(
-                "Win Toolbox 检测到安装记录还在，但启动入口已经丢失。",
+                "WinEase 检测到安装记录还在，但启动入口已经丢失。",
             )],
             started_at,
         ))
@@ -1704,7 +1704,7 @@ fn execute_dism(action_id: &str, title: &str, args: &[&str]) -> ToolActionResult
             format_process_details(&capture),
             None,
             vec![String::from(
-                "如果 DISM 提示权限不足，请用管理员身份运行 Win Toolbox 后重试。",
+                "如果 DISM 提示权限不足，请用管理员身份运行 WinEase 后重试。",
             )],
             started_at,
         ),
