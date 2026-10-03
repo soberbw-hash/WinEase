@@ -1,5 +1,6 @@
 mod application_icons;
 mod cleaning;
+mod component_updates;
 mod file_management;
 mod management;
 mod network;
@@ -118,6 +119,7 @@ struct StorageHotspot {
 
 #[derive(Debug)]
 struct ProcessCapture {
+    exit_code: Option<i32>,
     success: bool,
     stdout: String,
     stderr: String,
@@ -1498,6 +1500,7 @@ fn run_command_capture(program: &str, args: &[&str]) -> Result<ProcessCapture, S
         .map_err(|error| format!("Failed to run {program}: {error}"))?;
 
     Ok(ProcessCapture {
+        exit_code: output.status.code(),
         success: output.status.success(),
         stdout: decode_command_output(&output.stdout),
         stderr: decode_command_output(&output.stderr),
@@ -1853,7 +1856,7 @@ async fn manage_component(
         "install" => install_component_internal(&component_id),
         "repair" => repair_component_internal(&component_id),
         "uninstall" => uninstall_component_internal(&component_id),
-        "update" => repair_component_internal(&component_id),
+        "update" => component_updates::update_component(&component_id),
         "disable" => disable_component_internal(&component_id),
         _ => Err(format!("未知组件操作：{operation}")),
     })
@@ -1881,6 +1884,7 @@ async fn scan_storage_hotspots() -> Result<Vec<StorageHotspot>, String> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(cleaning::CleaningState::default())
         .manage(file_management::FileState::default())
         .setup(|app| {
@@ -1904,6 +1908,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_system_snapshot,
             list_components,
+            component_updates::check_component_updates,
             get_third_party_notices,
             get_component_logs,
             run_tool_action,

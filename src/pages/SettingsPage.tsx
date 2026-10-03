@@ -236,6 +236,14 @@ export function SettingsPage({
           <img src="/brand-icon.png" alt="" width="64" height="64" />
           <h2>WinEase</h2>
           <p className="scope-note">Windows 工具箱 · {version}</p>
+          <button
+            className="secondary-button"
+            onClick={() =>
+              window.dispatchEvent(new Event("winease-check-update"))
+            }
+          >
+            检查更新
+          </button>
           <p className="scope-note">界面使用 HarmonyOS Sans SC 鸿蒙字体</p>
           <div className="about-links">
             <button

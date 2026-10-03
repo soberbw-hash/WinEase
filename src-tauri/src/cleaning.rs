@@ -61,6 +61,7 @@ pub struct CleaningGroup {
     size_bytes: u64,
     file_count: u64,
     recommended: bool,
+    icon_target: Option<String>,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -128,6 +129,34 @@ fn group_label(path: &Path, category: &str) -> String {
     app.map(|app| format!("{app} · {kind}"))
         .unwrap_or_else(|| kind.into())
 }
+fn cleaning_icon_target(label: &str) -> Option<String> {
+    let app = label.split(" · ").next()?;
+    let relative: &[&str] = match app {
+        "Chrome" => &[r"Google\Chrome\Application\chrome.exe"],
+        "Edge" => &[r"Microsoft\Edge\Application\msedge.exe"],
+        "Brave" => &[r"BraveSoftware\Brave-Browser\Application\brave.exe"],
+        "Vivaldi" => &[r"Vivaldi\Application\vivaldi.exe"],
+        "Firefox" => &[r"Mozilla Firefox\firefox.exe"],
+        "VS Code" => &[
+            r"Microsoft VS Code\Code.exe",
+            r"Programs\Microsoft VS Code\Code.exe",
+        ],
+        "Node.js" => &[r"nodejs\node.exe"],
+        "Steam" => &[r"Steam\steam.exe"],
+        _ => return None,
+    };
+    for root in ["ProgramFiles", "ProgramFiles(x86)", "LOCALAPPDATA"] {
+        if let Some(root) = std::env::var_os(root) {
+            for relative in relative {
+                let path = PathBuf::from(&root).join(relative);
+                if path.is_file() && no_reparse_ancestors(&path) {
+                    return Some(path.to_string_lossy().into());
+                }
+            }
+        }
+    }
+    None
+}
 impl Scan {
     fn groups(&self) -> Vec<CleaningGroup> {
         let mut groups: BTreeMap<String, CleaningGroup> = BTreeMap::new();
@@ -143,6 +172,7 @@ impl Scan {
                 size_bytes: 0,
                 file_count: 0,
                 recommended: !matches!(file.category, "downloads-cache" | "caches" | "crashes"),
+                icon_target: cleaning_icon_target(&group_label(root, file.category)),
             });
             group.size_bytes = group.size_bytes.saturating_add(file.size);
             group.file_count += 1;
@@ -156,6 +186,7 @@ impl Scan {
 pub fn cleaning_files(
     scan_id: String,
     group_id: String,
+    group_ids: Option<Vec<String>>,
     offset: usize,
     state: tauri::State<'_, CleaningState>,
 ) -> Result<CleaningFiles, String> {
@@ -164,14 +195,26 @@ pub fn cleaning_files(
     if scan.id != scan_id || scan.created.elapsed() > SCAN_TTL {
         return Err("扫描结果已失效，请重新扫描".into());
     }
-    if !scan.groups().iter().any(|g| g.id == group_id) {
+    let ids: std::collections::HashSet<_> = group_ids
+        .unwrap_or_else(|| vec![group_id])
+        .into_iter()
+        .collect();
+    inspect_files(scan, ids, offset)
+}
+fn inspect_files(
+    scan: &Scan,
+    ids: std::collections::HashSet<String>,
+    offset: usize,
+) -> Result<CleaningFiles, String> {
+    let groups = scan.groups();
+    if ids.is_empty() || ids.iter().any(|id| !groups.iter().any(|g| &g.id == id)) {
         return Err("清理项目无效".into());
     }
     let items: Vec<_> = scan
         .files
         .iter()
         .enumerate()
-        .filter(|(_, f)| group_key(scan, f) == group_id)
+        .filter(|(_, f)| ids.contains(&group_key(scan, f)))
         .collect();
     Ok(CleaningFiles {
         total: items.len(),
@@ -567,6 +610,45 @@ mod tests {
         );
         filetime::set_file_mtime(&path, modified).unwrap();
         path
+    }
+    #[test]
+    fn merged_detail_pages_include_all_roots_once_and_reject_unknown_roots() {
+        let root = tempfile::tempdir().unwrap();
+        let mut all = None;
+        for (name, count) in [("Default", 60), ("Profile 1", 70)] {
+            let directory = root.path().join(name);
+            fs::create_dir(&directory).unwrap();
+            for i in 0..count {
+                old_file(&directory, &format!("{i}.cache"));
+            }
+            let mut scan = scan_root(&directory).unwrap();
+            for file in &mut scan.files {
+                file.category = "browser";
+            }
+            if let Some(existing) = all.as_mut() {
+                let existing: &mut Scan = existing;
+                existing.roots.extend(scan.roots);
+                existing.files.extend(scan.files);
+            } else {
+                all = Some(scan);
+            }
+        }
+        let scan = all.unwrap();
+        let ids: std::collections::HashSet<_> =
+            scan.groups().iter().map(|g| g.id.clone()).collect();
+        let first = inspect_files(&scan, ids.clone(), 0).unwrap();
+        let second = inspect_files(&scan, ids, 100).unwrap();
+        assert_eq!(first.total, 130);
+        assert_eq!(first.files.len(), 100);
+        assert_eq!(second.files.len(), 30);
+        let unique: std::collections::HashSet<_> = first
+            .files
+            .iter()
+            .chain(second.files.iter())
+            .map(|f| f.id)
+            .collect();
+        assert_eq!(unique.len(), 130);
+        assert!(inspect_files(&scan, ["browser:unknown".into()].into(), 0).is_err());
     }
     #[test]
     fn root_groups_select_only_inspected_cache_and_keep_other_app() {

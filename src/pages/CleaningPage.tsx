@@ -3,7 +3,72 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { formatBytes } from "../format";
 
-import type { CleaningGroup, CleaningScan, ToolActionResult } from "../types";
+import { ApplicationIcon } from "../ApplicationIcon";
+import { buildCleaningTree, type CleaningNode } from "../cleaningTree";
+import type { CleaningScan, ToolActionResult } from "../types";
+
+function SelectionCheck({
+  ids,
+  selected,
+  disabled,
+  label,
+  onChange,
+}: {
+  ids: string[];
+  selected: string[];
+  disabled: boolean;
+  label: string;
+  onChange: (checked: boolean) => void;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  const count = ids.filter((id) => selected.includes(id)).length;
+  useEffect(() => {
+    if (ref.current)
+      ref.current.indeterminate = count > 0 && count < ids.length;
+  }, [count, ids.length]);
+  return (
+    <input
+      ref={ref}
+      type="checkbox"
+      aria-label={label}
+      checked={count === ids.length}
+      disabled={disabled}
+      onChange={(e) => onChange(e.target.checked)}
+    />
+  );
+}
+function CacheIcon({ name }: { name: string }) {
+  return (
+    <span className="cleanup-symbol" aria-hidden="true">
+      <svg
+        viewBox="0 0 24 24"
+        width="24"
+        height="24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+      >
+        {name === "Windows" ? (
+          <path d="M3 3h8v8H3zM14 3h7v8h-7zM3 14h8v7H3zM14 14h7v7h-7z" />
+        ) : name.includes("图形") || name === "NVIDIA" ? (
+          <>
+            <rect x="5" y="5" width="14" height="14" rx="2" />
+            <path d="M9 9h6v6H9zM8 2v3M16 2v3M8 19v3M16 19v3M2 8h3M2 16h3M19 8h3M19 16h3" />
+          </>
+        ) : name.includes("日志") || name.includes("报告") ? (
+          <>
+            <path d="M5 3h10l4 4v14H5zM15 3v5h4M8 12h8M8 16h6" />
+          </>
+        ) : (
+          <>
+            <ellipse cx="12" cy="5" rx="8" ry="3" />
+            <path d="M4 5v7c0 4 16 4 16 0V5M4 12v6c0 4 16 4 16 0v-6" />
+          </>
+        )}
+      </svg>
+    </span>
+  );
+}
 
 export function CleaningPage({
   onResult,
@@ -35,7 +100,7 @@ export function CleaningPage({
   const [detailError, setDetailError] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState<string[]>([]);
   const detailGeneration = useRef(0);
-  async function loadDetails(item: CleaningGroup, offset = 0) {
+  async function loadDetails(item: CleaningNode, offset = 0) {
     if (!scan || loading.includes(item.id)) return;
     const generation = detailGeneration.current;
     setLoading((ids) => [...ids, item.id]);
@@ -49,7 +114,12 @@ export function CleaningPage({
           sizeBytes: number;
         }>;
         total: number;
-      }>("cleaning_files", { scanId: scan.scanId, groupId: item.id, offset });
+      }>("cleaning_files", {
+        scanId: scan.scanId,
+        groupId: item.ids[0],
+        groupIds: item.ids,
+        offset,
+      });
       if (generation === detailGeneration.current)
         setDetails((current) => ({
           ...current,
@@ -68,7 +138,7 @@ export function CleaningPage({
         setLoading((ids) => ids.filter((id) => id !== item.id));
     }
   }
-  function toggleDetails(item: CleaningGroup) {
+  function toggleDetails(item: CleaningNode) {
     setExpanded((ids) =>
       ids.includes(item.id)
         ? ids.filter((id) => id !== item.id)
@@ -76,71 +146,75 @@ export function CleaningPage({
     );
     if (!details[item.id]) void loadDetails(item);
   }
-  function toggleGroup(id: string, checked: boolean) {
-    setSelected((ids) =>
+  function toggleIds(ids: string[], checked: boolean) {
+    setSelected((current) =>
       checked
-        ? [...new Set([...ids, id])]
-        : ids.filter((value) => value !== id),
+        ? [...new Set([...current, ...ids])]
+        : current.filter((id) => !ids.includes(id)),
     );
   }
-  function renderGroups(items: CleaningGroup[], title: string) {
-    if (!items.length) return null;
-    const all = items.every((item) => selected.includes(item.id));
-    const subtotal = items
-      .filter((item) => selected.includes(item.id))
-      .reduce((n, item) => n + item.sizeBytes, 0);
+  function renderNode(item: CleaningNode, software: boolean) {
+    const open = expanded.includes(item.id);
     return (
-      <section className="cleanup-group">
-        <div className="cleanup-group__head">
-          <label>
-            <input
-              type="checkbox"
-              checked={all}
-              disabled={busy !== null}
-              aria-label={`选择${title}`}
-              onChange={(e) =>
-                setSelected((ids) =>
-                  e.target.checked
-                    ? [...new Set([...ids, ...items.map((item) => item.id)])]
-                    : ids.filter((id) => !items.some((item) => item.id === id)),
-                )
-              }
-            />
-            {title}
-          </label>
-          <span>
-            {formatBytes(subtotal)} /{" "}
-            {formatBytes(items.reduce((n, item) => n + item.sizeBytes, 0))}
-          </span>
+      <div
+        className={`cleanup-item ${software ? "cleanup-software" : "cleanup-kind"}`}
+        key={item.id}
+      >
+        <div className="cleanup-item__head">
+          <SelectionCheck
+            ids={item.ids}
+            selected={selected}
+            disabled={busy !== null}
+            label={`选择 ${item.label}`}
+            onChange={(checked) => toggleIds(item.ids, checked)}
+          />
+          <button
+            className="cleanup-expand"
+            aria-expanded={open}
+            aria-controls={`files-${item.id}`}
+            onClick={() => {
+              if (software)
+                setExpanded((ids) =>
+                  ids.includes(item.id)
+                    ? ids.filter((id) => id !== item.id)
+                    : [...ids, item.id],
+                );
+              else toggleDetails(item);
+            }}
+          >
+            <span className="cleanup-chevron" aria-hidden="true">
+              {open ? "⌄" : "›"}
+            </span>
+            {software && item.iconTarget ? (
+              <ApplicationIcon target={item.iconTarget} />
+            ) : (
+              <CacheIcon name={item.label} />
+            )}
+            <strong>{item.label}</strong>
+            <small>{item.fileCount} 个文件</small>
+            {item.groups.every((g) => !g.recommended) && (
+              <small className="cleanup-optional">可选</small>
+            )}
+          </button>
+          <span className="tabular">{formatBytes(item.sizeBytes)}</span>
         </div>
-        {items.map((item) => (
-          <div className="cleanup-item" key={item.id}>
-            <div className="cleanup-item__head">
-              <input
-                type="checkbox"
-                aria-label={`选择 ${item.label}`}
-                checked={selected.includes(item.id)}
-                disabled={busy !== null}
-                onChange={(e) => toggleGroup(item.id, e.target.checked)}
-              />
-              <button
-                className="cleanup-expand"
-                aria-expanded={expanded.includes(item.id)}
-                aria-controls={`files-${item.id}`}
-                onClick={() => toggleDetails(item)}
-              >
-                <span aria-hidden="true">
-                  {expanded.includes(item.id) ? "⌄" : "›"}
-                </span>
-                <strong>{item.label}</strong>
-                <small>{item.fileCount} 个文件</small>
-              </button>
-              <span className="tabular">{formatBytes(item.sizeBytes)}</span>
+        {software ? (
+          open && (
+            <div className="cleanup-kinds" id={`files-${item.id}`}>
+              {item.children.map((child) => renderNode(child, false))}
             </div>
+          )
+        ) : (
+          <>
             {expanded.includes(item.id) && (
               <div className="cleanup-files" id={`files-${item.id}`}>
-                <p className="scope-note" title={item.path}>
-                  {item.path}
+                <p
+                  className="scope-note"
+                  title={item.groups.map((g) => g.path).join("\n")}
+                >
+                  {item.groups.length === 1
+                    ? item.groups[0].path
+                    : `${item.groups.length} 个缓存目录 · 已合并全部文件`}
                 </p>
                 {detailError[item.id] && (
                   <p role="alert" className="inline-error">
@@ -193,14 +267,43 @@ export function CleaningPage({
                 )}
               </div>
             )}
-          </div>
-        ))}
+          </>
+        )}
+      </div>
+    );
+  }
+  function renderGroups(items: CleaningNode[], title: string) {
+    if (!items.length) return null;
+    const ids = items.flatMap((item) => item.ids);
+    const subtotal = (scan?.groups ?? [])
+      .filter((item) => ids.includes(item.id) && selected.includes(item.id))
+      .reduce((sum, item) => sum + item.sizeBytes, 0);
+    return (
+      <section className="cleanup-group">
+        <div className="cleanup-group__head">
+          <label>
+            <SelectionCheck
+              ids={ids}
+              selected={selected}
+              disabled={busy !== null}
+              label={`选择${title}`}
+              onChange={(checked) => toggleIds(ids, checked)}
+            />
+            {title}
+          </label>
+          <span>
+            {formatBytes(subtotal)} /{" "}
+            {formatBytes(items.reduce((sum, item) => sum + item.sizeBytes, 0))}
+          </span>
+        </div>
+        {items.map((item) => renderNode(item, true))}
       </section>
     );
   }
   useEffect(() => {
     if (isTauri()) void scanFiles();
   }, []);
+  const tree = buildCleaningTree(scan?.groups ?? []);
   const bytes =
     scan?.groups
       .filter((item) => selected.includes(item.id))
@@ -300,24 +403,12 @@ export function CleaningPage({
               </button>
             </div>
             {renderGroups(
-              scan.groups.filter(
-                (item) =>
-                  item.recommended &&
-                  ["temporary", "logs"].includes(item.category),
-              ),
-              "推荐系统清理",
+              tree.filter((item) => item.label === "Windows"),
+              "系统清理",
             )}
             {renderGroups(
-              scan.groups.filter(
-                (item) =>
-                  item.recommended &&
-                  !["temporary", "logs"].includes(item.category),
-              ),
-              "推荐应用清理",
-            )}
-            {renderGroups(
-              scan.groups.filter((item) => !item.recommended),
-              "其他可选项目",
+              tree.filter((item) => item.label !== "Windows"),
+              "应用清理",
             )}
             {scan.groups.length === 0 && (
               <div className="empty-state">未发现符合保留期限的缓存文件</div>

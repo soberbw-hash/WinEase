@@ -18,7 +18,7 @@ static SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Default)]
 pub struct FileState {
-    scan: Mutex<Option<Scan>>,
+    scan: Mutex<Vec<Scan>>,
     busy: AtomicBool,
     cancel: Arc<AtomicBool>,
 }
@@ -181,11 +181,14 @@ fn protected(path: &Path) -> bool {
             "program files",
             "program files (x86)",
             "programdata",
+            "node_modules",
+            ".git",
         ]
         .contains(&c.as_os_str().to_string_lossy().to_lowercase().as_str())
-    }) || path
-        .parent()
-        .is_some_and(|p| p.to_string_lossy().trim_end_matches('\\').ends_with(':'))
+    }) || (!path.is_dir()
+        && path
+            .parent()
+            .is_some_and(|p| p.to_string_lossy().trim_end_matches('\\').ends_with(':')))
 }
 #[tauri::command]
 pub fn file_scan_drives() -> Vec<String> {
@@ -229,12 +232,6 @@ fn scan_files(
         return Err("目录不存在或包含链接。".into());
     }
     let root = fs::canonicalize(root).map_err(|e| e.to_string())?;
-    let _windows = fs::canonicalize(
-        std::env::var_os("WINDIR")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from(r"C:\Windows")),
-    )
-    .map_err(|e| e.to_string())?;
     let started = Instant::now();
     let mut files = Vec::new();
     let mut skipped = 0;
@@ -244,6 +241,33 @@ fn scan_files(
     let mut breakdown: BTreeMap<&str, u64> = BTreeMap::new();
     let walker = WalkDir::new(&root)
         .follow_links(false)
+        .sort_by_key(|entry| {
+            let name = entry.file_name().to_string_lossy().to_lowercase();
+            let rank = if [
+                "users",
+                "downloads",
+                "documents",
+                "desktop",
+                "pictures",
+                "videos",
+            ]
+            .contains(&name.as_str())
+            {
+                0
+            } else if [
+                "windows",
+                "program files",
+                "program files (x86)",
+                "programdata",
+            ]
+            .contains(&name.as_str())
+            {
+                2
+            } else {
+                1
+            };
+            (rank, name)
+        })
         .into_iter()
         .filter_entry(|e| {
             !(duplicates && e.depth() > 0 && e.file_type().is_dir() && protected(e.path()))
@@ -366,8 +390,12 @@ fn scan_files(
         limited = true;
     }
     if duplicates && files.len() > 5000 {
-        let group = files[4999].group;
-        files.retain(|f| f.group < group);
+        files.truncate(5000);
+        let mut counts = BTreeMap::new();
+        for file in &files {
+            *counts.entry(file.group).or_insert(0usize) += 1;
+        }
+        files.retain(|file| counts[&file.group] > 1);
         limited = true;
     }
     let mut usage: Vec<_> = usage
@@ -430,7 +458,7 @@ pub async fn scan_personal_files(
     }
     let _guard = BusyGuard(&state.busy);
     state.cancel.store(false, Ordering::SeqCst);
-    *state.scan.lock().map_err(|e| e.to_string())? = None;
+
     let cancel = state.cancel.clone();
     let (scan, skipped, limited, usage, total_bytes, breakdown) =
         tauri::async_runtime::spawn_blocking(move || {
@@ -469,7 +497,12 @@ pub async fn scan_personal_files(
             })
             .collect(),
     };
-    *state.scan.lock().map_err(|e| e.to_string())? = Some(scan);
+    let mut scans = state.scan.lock().map_err(|e| e.to_string())?;
+    scans.retain(|item| item.created.elapsed() < Duration::from_secs(900));
+    if scans.len() >= 6 {
+        scans.remove(0);
+    }
+    scans.push(scan);
     Ok(result)
 }
 #[tauri::command]
@@ -528,10 +561,12 @@ pub async fn recycle_selected_files(
     let _guard = BusyGuard(&state.busy);
     let scan = {
         let mut slot = state.scan.lock().map_err(|e| e.to_string())?;
-        if slot.as_ref().is_none_or(|s| s.id != scan_id) {
-            return Err("请重新扫描。".into());
-        }
-        slot.take().unwrap()
+        let index = slot
+            .iter()
+            .position(|s| s.id == scan_id)
+            .ok_or("扫描结果已失效，请重新扫描。")?;
+        validate_selection(&slot[index], &ids)?;
+        slot.remove(index)
     };
     tauri::async_runtime::spawn_blocking(move || {
         let files = validate_selection(&scan, &ids)?;
@@ -575,6 +610,40 @@ mod tests {
         }
     }
     #[test]
+    #[ignore = "explicit read-only C drive scan and duplicate hashes; never deletes"]
+    fn current_drive_scans_return_readable_files_and_duplicate_groups() {
+        for duplicates in [false, true] {
+            let started = Instant::now();
+            let (scan, skipped, limited, _, bytes, _) =
+                scan_files(PathBuf::from(r"C:\"), duplicates, &AtomicBool::new(false)).unwrap();
+            println!("mode={duplicates} files={} groups={} bytes={bytes} skipped={skipped} limited={limited} elapsed={:?}",scan.files.len(),scan.files.iter().filter_map(|f|f.group).collect::<HashSet<_>>().len(),started.elapsed());
+            assert!(
+                !scan.files.is_empty(),
+                "current test machine should have scan results"
+            );
+        }
+    }
+    #[test]
+    fn multiple_scans_remain_independently_selectable() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("sample");
+        fs::write(&path, "sample").unwrap();
+        let make = |id: &str| Scan {
+            id: id.into(),
+            root: directory.path().into(),
+            created: Instant::now(),
+            files: vec![candidate(path.clone(), None)],
+        };
+        let state = FileState::default();
+        let mut scans = state.scan.lock().unwrap();
+        scans.push(make("large"));
+        scans.push(make("duplicates"));
+        assert!(validate_selection(scans.iter().find(|s| s.id == "large").unwrap(), &[0]).is_ok());
+        assert!(
+            validate_selection(scans.iter().find(|s| s.id == "duplicates").unwrap(), &[0]).is_ok()
+        );
+    }
+    #[test]
     fn protected_directory_checks_ignore_windows_case_and_respect_boundaries() {
         assert!(path_within(
             Path::new(r"C:\WINDOWS\System32"),
@@ -584,6 +653,14 @@ mod tests {
             Path::new(r"C:\Windows-photos"),
             Path::new(r"c:\Windows")
         ));
+    }
+    #[test]
+    fn top_level_user_directory_is_not_a_protected_root_file() {
+        let users = Path::new(r"C:\Users");
+        if users.is_dir() {
+            assert!(!protected(users));
+        }
+        assert!(protected(Path::new(r"C:\pagefile.sys")));
     }
     #[test]
     fn system_files_remain_readonly_and_extended_paths_are_normalized() {

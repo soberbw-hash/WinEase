@@ -1739,3 +1739,14 @@ code {
 .cleanup-discovery {position:sticky;top:0;z-index:10;background:white;align-items:center;}
 .cleanup-discovery>div {display:grid;gap:8px;}
 @media(max-width:1000px){.cleanup-discovery {flex-direction:row;}.cleanup-discovery strong{font-size:18px;}}
+.cleanup-kinds {margin-left:36px;border-top:1px solid #edf0f4;}
+.cleanup-kinds .cleanup-item__head {padding-top:8px;padding-bottom:8px;}
+.cleanup-symbol {display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;flex:none;color:#5d7c9b;}
+.cleanup-chevron {width:10px;flex:none;}
+.cleanup-software>.cleanup-item__head .cleanup-expand strong {font-weight:600;}
+.cleanup-kind .cleanup-expand strong {font-weight:400;}
+.cleanup-optional {margin-left:auto;color:#7b8593;}
+.cleanup-expand .application-icon {width:26px;height:26px;flex:none;}
+.cleanup-files {max-height:340px;overflow:auto;padding-left:64px;}
+
+.app-update-status {position:fixed;right:22px;bottom:18px;z-index:20;display:grid;gap:6px;font-size:12px;max-width:min(420px,80vw);color:#68707c;}

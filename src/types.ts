@@ -86,6 +86,8 @@ export type ComponentBusyState = {
 };
 
 export type ComponentManifest = {
+  updateAvailable?: boolean;
+  availableVersion?: string | null;
   id: string;
   name: string;
   description: string;
@@ -163,6 +165,7 @@ export type AppSettings = {
 };
 
 export type CleaningGroup = {
+  iconTarget?: string | null;
   id: string;
   label: string;
   category: string;

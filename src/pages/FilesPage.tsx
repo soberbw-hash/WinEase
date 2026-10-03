@@ -77,9 +77,11 @@ export function fileKind(name: string) {
 }
 export function FilesPage({
   initialDuplicates,
+  navigationRequest = 0,
   onOpenTarget,
 }: {
   initialDuplicates: boolean;
+  navigationRequest?: number;
   onOpenTarget: (path: string) => void;
 }) {
   const [view, setView] = useState<View>(
@@ -98,13 +100,24 @@ export function FilesPage({
     [minimum, setMinimum] = useState(10 * 1024 * 1024),
     [search, setSearch] = useState(""),
     [page, setPage] = useState(0);
+  const results = useRef(new Map<string, Scan>());
+  const cacheKey = (drive: string, duplicates: boolean) =>
+    `${drive.toLowerCase()}:${duplicates}`;
   const lock = useRef(false),
     mounted = useRef(true);
   useEffect(() => {
-    setView(initialDuplicates ? "duplicates" : "overview");
-    setScan(null);
+    if (lock.current) return;
+    setView(
+      initialDuplicates
+        ? "duplicates"
+        : navigationRequest
+          ? "large"
+          : "overview",
+    );
+    setScan(results.current.get(cacheKey(root, initialDuplicates)) ?? null);
+    setScanDuplicates(initialDuplicates);
     setSelected([]);
-  }, [initialDuplicates]);
+  }, [initialDuplicates, navigationRequest]);
   useEffect(() => {
     mounted.current = true;
     if (isTauri())
@@ -141,6 +154,7 @@ export function FilesPage({
         duplicates,
       });
       if (mounted.current) {
+        results.current.set(cacheKey(root, duplicates), next);
         setScan(next);
         setScanDuplicates(duplicates);
         void invoke<Drive[]>("storage_drives")
@@ -148,7 +162,10 @@ export function FilesPage({
           .catch(() => {});
       }
     } catch (e) {
-      if (mounted.current) setError(String(e));
+      if (mounted.current) {
+        setError(String(e));
+        setScan(results.current.get(cacheKey(root, duplicates)) ?? null);
+      }
     } finally {
       lock.current = false;
       if (mounted.current) setBusy(null);
@@ -156,7 +173,10 @@ export function FilesPage({
   }
   function changeView(next: View) {
     if ((next === "duplicates") !== scanDuplicates) {
-      setScan(null);
+      setScan(
+        results.current.get(cacheKey(root, next === "duplicates")) ?? null,
+      );
+      setScanDuplicates(next === "duplicates");
       setSelected([]);
     }
     setView(next);
@@ -180,6 +200,7 @@ export function FilesPage({
     } catch (e) {
       setError(String(e));
     } finally {
+      results.current.delete(cacheKey(root, scanDuplicates));
       setScan(null);
       setSelected([]);
       setBusy(null);
@@ -314,7 +335,11 @@ export function FilesPage({
               disabled={busy !== null}
               onChange={(e) => {
                 setRoot(e.target.value);
-                setScan(null);
+                setScan(
+                  results.current.get(
+                    cacheKey(e.target.value, view === "duplicates"),
+                  ) ?? null,
+                );
                 setSelected([]);
               }}
             >

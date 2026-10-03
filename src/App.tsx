@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { AppUpdater } from "./AppUpdater";
 import { BossModeOverlay } from "./BossModeOverlay";
 import { homeQuickActions, sections } from "./content";
 import { getBossModeViewState } from "./fakeUpdate";
@@ -43,6 +44,7 @@ function App() {
   const [managementTab, setManagementTab] =
     useState<ManagementTab>("processes");
   const [duplicates, setDuplicates] = useState(false);
+  const [fileNavigation, setFileNavigation] = useState(0);
   const [history, setHistory] = useState<ToolActionResult[]>([]);
   const [, setRunningActionId] = useState<string | null>(null);
   const [componentBusy, setComponentBusy] = useState<ComponentBusyState | null>(
@@ -204,6 +206,7 @@ function App() {
     if (id === "open_cleaning") setActiveSection("cleaning");
     else if (id === "open_storage" || id === "open_duplicates") {
       setDuplicates(id === "open_duplicates");
+      setFileNavigation((value) => value + 1);
       setActiveSection("efficiency");
     } else if (id === "open_health") setActiveSection("health");
     else if (id === "open_network") setActiveSection("network");
@@ -265,6 +268,43 @@ function App() {
     }
     return () => {
       if (toastTimer.current) clearTimeout(toastTimer.current);
+    };
+  }, []);
+  useEffect(() => {
+    let cancelled = false,
+      checking = false;
+    async function inspect() {
+      if (!isTauri() || checking) return;
+      checking = true;
+      try {
+        const rows = await invoke<
+          Array<{ id: string; available: boolean; version: string | null }>
+        >("check_component_updates");
+        if (!cancelled)
+          setComponents((items) =>
+            items.map((item) => {
+              const row = rows.find((row) => row.id === item.id);
+              return row
+                ? {
+                    ...item,
+                    updateAvailable: row.available,
+                    availableVersion: row.version,
+                  }
+                : item;
+            }),
+          );
+      } catch {
+        /* A failed background check must not mark packages current. */
+      } finally {
+        checking = false;
+      }
+    }
+    const first = setTimeout(() => void inspect(), 30000);
+    const timer = setInterval(() => void inspect(), 6 * 60 * 60 * 1000);
+    return () => {
+      cancelled = true;
+      clearTimeout(first);
+      clearInterval(timer);
     };
   }, []);
   useEffect(() => {
@@ -354,12 +394,7 @@ function App() {
           />
         );
       case "efficiency":
-        return (
-          <FilesPage
-            initialDuplicates={duplicates}
-            onOpenTarget={(target) => void openTarget(target)}
-          />
-        );
+        return null;
       case "settings":
         return (
           <SettingsPage
@@ -439,6 +474,13 @@ function App() {
                 </div>
               )}
             {renderPage()}
+            <div hidden={activeSection !== "efficiency"}>
+              <FilesPage
+                navigationRequest={fileNavigation}
+                initialDuplicates={duplicates}
+                onOpenTarget={(target) => void openTarget(target)}
+              />
+            </div>
           </div>
         </main>
       </div>
@@ -449,6 +491,7 @@ function App() {
         onClose={() => setDrawerOpen(false)}
         onOpenTarget={(target) => void openTarget(target)}
       />
+      <AppUpdater />
       <SupportModal open={supportOpen} onClose={() => setSupportOpen(false)} />
       <ConfirmDialog
         open={pendingUninstall !== null}

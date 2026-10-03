@@ -145,6 +145,24 @@ export function ComponentCenter({
                     </button>
                   ) : null}
 
+                  {item.installed && item.supportsUpdate && (
+                    <button
+                      className={
+                        item.updateAvailable
+                          ? "secondary-button"
+                          : "ghost-button"
+                      }
+                      disabled={busyState !== null}
+                      onClick={() => onManage(item.id, "update")}
+                      title={
+                        item.availableVersion
+                          ? `可更新至 ${item.availableVersion}`
+                          : "检查并更新"
+                      }
+                    >
+                      更新{item.updateAvailable ? " · 新版" : ""}
+                    </button>
+                  )}
                   {item.supportsUninstall && item.installed ? (
                     <button
                       className="ghost-button"
