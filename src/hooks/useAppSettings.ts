@@ -6,10 +6,7 @@ const STORAGE_KEY = "win-toolbox:settings:v3_2";
 const defaultSettings: AppSettings = {
   density: "auto",
   scale: "auto",
-  fontPreset: "harmony",
-  startOnBoot: false,
-  saveToClipboardFirst: true,
-  screenshotFolder: "图片/Win Toolbox",
+  fontPreset: "system",
   captureHelperEnabled: false,
 };
 
@@ -21,7 +18,10 @@ export function useAppSettings() {
     }
 
     try {
-      return { ...defaultSettings, ...(JSON.parse(raw) as Partial<AppSettings>) };
+      return {
+        ...defaultSettings,
+        ...(JSON.parse(raw) as Partial<AppSettings>),
+      };
     } catch {
       return defaultSettings;
     }

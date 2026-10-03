@@ -1,139 +1,56 @@
-import { formatMemory, formatRelativeTime } from "../format";
-import type {
-  HomeQuickAction,
-  StorageHotspot,
-  SystemSnapshot,
-  ToolActionResult,
-} from "../types";
-
-type HomePageProps = {
-  snapshot: SystemSnapshot | null;
-  quickActions: HomeQuickAction[];
-  runningActionId: string | null;
-  hotspots: StorageHotspot[];
-  lastResult: ToolActionResult | null;
-  qclawInstalled: boolean;
-  onQuickAction: (actionId: string) => void;
-};
-
+import type { HomeQuickAction } from "../types";
 export function HomePage({
-  snapshot,
   quickActions,
-  runningActionId,
-  hotspots,
-  lastResult,
-  qclawInstalled,
   onQuickAction,
-}: HomePageProps) {
-  const stats = [
-    {
-      label: "CPU",
-      value: snapshot ? `${snapshot.cpuLoad}%` : "读取中",
-      meta: snapshot?.cpuName ?? "处理器信息",
-    },
-    {
-      label: "内存",
-      value: snapshot ? `${snapshot.memoryUsagePercent}%` : "读取中",
-      meta: snapshot
-        ? `${formatMemory(snapshot.memoryUsedMb)} / ${formatMemory(snapshot.memoryTotalMb)}`
-        : "物理内存占用",
-    },
-    {
-      label: "显卡",
-      value: snapshot?.gpuMemoryMb ? formatMemory(snapshot.gpuMemoryMb) : "读取中",
-      meta: snapshot?.gpuName ?? "图形设备信息",
-    },
-    {
-      label: "空间热点",
-      value: hotspots[0]?.label ?? "扫描中",
-      meta: hotspots[0]?.source ?? "空间管理",
-    },
-  ];
-
+}: {
+  quickActions: HomeQuickAction[];
+  onQuickAction: (id: string) => void;
+}) {
   return (
-    <div className="page-stack">
-      <section className="hero-surface">
-        <div className="hero-surface__copy">
-          <p className="section-kicker">WIN TOOLBOX V3.4</p>
-          <h1>装好就能用</h1>
-          <p>截图、清理、修复、空间管理，四个高频入口都留在第一屏，增强工具统一收进组件中心。</p>
-        </div>
-
-        <div className="hero-surface__status soft-card">
-          <h3>当前状态</h3>
-          <p>{snapshot ? `${snapshot.osName} · ${snapshot.hostName}` : "正在读取设备状态"}</p>
-          <small>{formatRelativeTime(snapshot?.collectedAt)}</small>
-          <span className={`pill ${qclawInstalled ? "pill--success" : "pill--muted"}`}>
-            {qclawInstalled ? "Qclaw 已安装" : "Qclaw 未安装"}
-          </span>
-        </div>
-      </section>
-
+    <div className="page-stack home-page">
       <section className="surface">
         <div className="section-head">
-          <div>
-            <p className="section-kicker">Quick Actions</p>
-            <h2>四个高频入口</h2>
-          </div>
-          <p className="section-copy">不用解释太多，点一下就开始工作。</p>
+          <h2>主要功能</h2>
         </div>
-
         <div className="home-actions">
           {quickActions.map((item) => (
             <button
               key={item.id}
               className={`home-action ${item.tone === "primary" ? "home-action--primary" : ""}`}
-              type="button"
-              disabled={runningActionId === item.id}
               onClick={() => onQuickAction(item.id)}
             >
-              <strong>{runningActionId === item.id ? "处理中..." : item.title}</strong>
+              <strong>{item.title}</strong>
               <span>{item.description}</span>
+              <span className="home-action__arrow" aria-hidden="true">
+                →
+              </span>
             </button>
           ))}
         </div>
       </section>
-
       <section className="surface">
         <div className="section-head">
-          <div>
-            <p className="section-kicker">Snapshot</p>
-            <h2>一眼看懂</h2>
-          </div>
+          <h2>常用工具</h2>
         </div>
-
-        <div className="stat-strip">
-          {stats.map((item) => (
-            <article key={item.label} className="soft-card stat-strip__item">
-              <small>{item.label}</small>
-              <strong>{item.value}</strong>
-              <p>{item.meta}</p>
-            </article>
+        <div className="home-shortcuts">
+          {[
+            ["open_processes", "进程管理"],
+            ["open_duplicates", "重复文件"],
+            ["open_network", "网络检测"],
+            ["open_system", "Windows 设置"],
+            ["open_uninstall", "深度卸载"],
+            ["open_popups", "弹窗管理"],
+          ].map(([id, label]) => (
+            <button
+              className="quick-path"
+              key={id}
+              onClick={() => onQuickAction(id)}
+            >
+              <strong>{label}</strong>
+              <span aria-hidden="true">→</span>
+            </button>
           ))}
         </div>
-      </section>
-
-      <section className="surface">
-        <div className="section-head">
-          <div>
-            <p className="section-kicker">Last Result</p>
-            <h2>结果摘要</h2>
-          </div>
-        </div>
-
-        {lastResult ? (
-          <article className="soft-card result-inline">
-            <div className="history-item__top">
-              <strong>{lastResult.title}</strong>
-              <span className={`pill ${lastResult.success ? "pill--success" : "pill--warning"}`}>
-                {lastResult.success ? "成功" : "注意"}
-              </span>
-            </div>
-            <p>{lastResult.summary}</p>
-          </article>
-        ) : (
-          <div className="empty-state">执行任意动作后，这里会保留最近一次结果。</div>
-        )}
       </section>
     </div>
   );

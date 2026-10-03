@@ -15,10 +15,6 @@ type ComponentCenterProps = {
 };
 
 function getCategoryTone(category: string) {
-  if (category.includes("AI")) {
-    return "component-card__icon--ai";
-  }
-
   if (category.includes("网络")) {
     return "component-card__icon--network";
   }
@@ -48,7 +44,6 @@ export function ComponentCenter({
   hiddenIds = [],
   onManage,
   onLaunch,
-  onOpenTarget,
 }: ComponentCenterProps) {
   const visibleItems = items.filter(
     (item) => item.kind !== "built-in" && !hiddenIds.includes(item.id),
@@ -58,12 +53,8 @@ export function ComponentCenter({
     <section className="surface">
       <div className="section-head">
         <div>
-          <p className="section-kicker">Components</p>
           <h2>组件中心</h2>
         </div>
-        <p className="section-copy">
-          装上常用增强工具，状态、版本、来源和日志入口都能在这里直接看到。
-        </p>
       </div>
 
       {visibleItems.length === 0 ? (
@@ -76,14 +67,23 @@ export function ComponentCenter({
             const iconPath = getComponentIconPath(item.id);
 
             return (
-              <article key={item.id} className="soft-card component-card component-card--rich">
+              <article
+                key={item.id}
+                className="soft-card component-card component-card--rich"
+              >
                 <div className="component-card__top">
                   <div className="component-card__title">
-                    <span className={`component-card__icon ${getCategoryTone(item.category)}`}>
-                      {iconPath ? <img src={iconPath} alt="" /> : item.name.slice(0, 1)}
+                    <span
+                      className={`component-card__icon ${getCategoryTone(item.category)}`}
+                    >
+                      {iconPath ? (
+                        <img src={iconPath} alt="" />
+                      ) : (
+                        item.name.slice(0, 1)
+                      )}
                     </span>
                     <div>
-                      <h3>{item.name}</h3>
+                      <h3 title={item.name}>{item.name}</h3>
                       <small>{item.category}</small>
                     </div>
                   </div>
@@ -100,31 +100,23 @@ export function ComponentCenter({
                   </span>
                 </div>
 
-                <p>{item.description}</p>
-                <small>{item.summary}</small>
-
-                <div className="component-card__meta">
-                  <span>{item.version ? `版本 ${item.version}` : "版本跟随安装源"}</span>
-                  <span>{item.sourceLabel ?? "官方来源"}</span>
-                </div>
+                <p title={item.description}>{item.description}</p>
 
                 {isBusy ? (
                   <div className="component-progress">
                     <div className="component-progress__head">
                       <span>{busyState?.stageLabel}</span>
-                      <strong>{busyState?.progress}%</strong>
-                    </div>
-                    <div className="component-progress__bar">
-                      <span style={{ width: `${busyState?.progress ?? 0}%` }} />
                     </div>
                   </div>
                 ) : null}
 
                 <div className="button-row">
                   <button
-                    className={item.installed ? "secondary-button" : "primary-button"}
+                    className={
+                      item.installed ? "secondary-button" : "primary-button"
+                    }
                     type="button"
-                    disabled={isBusy}
+                    disabled={busyState !== null}
                     onClick={() => {
                       if (primary.operation) {
                         onManage(item.id, primary.operation);
@@ -136,7 +128,9 @@ export function ComponentCenter({
                     {isBusy ? "处理中..." : primary.label}
                   </button>
 
-                  {item.installed && item.supportsRepair && item.status !== "repairable" ? (
+                  {item.installed &&
+                  item.supportsRepair &&
+                  item.status !== "repairable" ? (
                     <button
                       className="ghost-button"
                       type="button"
@@ -155,36 +149,6 @@ export function ComponentCenter({
                       onClick={() => onManage(item.id, "uninstall")}
                     >
                       卸载
-                    </button>
-                  ) : null}
-                </div>
-
-                <div className="component-card__links">
-                  {item.sourceUrl ? (
-                    <button
-                      className="component-card__link"
-                      type="button"
-                      onClick={() => onOpenTarget(item.sourceUrl!)}
-                    >
-                      来源
-                    </button>
-                  ) : null}
-                  {item.licenseUrl ? (
-                    <button
-                      className="component-card__link"
-                      type="button"
-                      onClick={() => onOpenTarget(item.licenseUrl!)}
-                    >
-                      许可证
-                    </button>
-                  ) : null}
-                  {item.logDir ? (
-                    <button
-                      className="component-card__link"
-                      type="button"
-                      onClick={() => onOpenTarget(item.logDir!)}
-                    >
-                      日志
                     </button>
                   ) : null}
                 </div>
