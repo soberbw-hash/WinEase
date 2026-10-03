@@ -29,12 +29,11 @@ function getCategoryTone(category: string) {
 }
 
 function getPrimaryAction(item: ComponentManifest) {
-  if (item.status === "repairable") {
-    return { label: "修复", operation: "repair" as const };
-  }
-
   if (item.installed) {
     return { label: "打开", operation: null };
+  }
+  if (item.status === "repairable") {
+    return { label: "修复", operation: "repair" as const };
   }
 
   return { label: "安装", operation: "install" as const };

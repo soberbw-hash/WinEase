@@ -20,7 +20,10 @@ impl Drop for ComponentTask {
 pub(crate) fn begin_component_task(id: &str) -> Result<ComponentTask, String> {
     // This guard only reserves a task slot; each operation validates its fixed catalog ID.
     // Do not enumerate installed packages here: that would delay opening unrelated apps.
-    if id.is_empty() || id.len() > 128 || !id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-') {
+    if id.is_empty()
+        || id.len() > 128
+        || !id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
+    {
         return Err("无效组件标识。".into());
     }
     let mut tasks = TASKS.lock().map_err(|e| e.to_string())?;

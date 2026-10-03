@@ -235,7 +235,104 @@ fn component_log_dir(component: &ComponentDefinition) -> PathBuf {
 }
 
 fn find_first_existing_path(paths: &[PathBuf]) -> Option<PathBuf> {
-    paths.iter().find(|path| path.exists()).cloned()
+    paths
+        .iter()
+        .find(|path| path.is_file() && cleaning::no_reparse_ancestors(path))
+        .cloned()
+}
+
+fn portable_package_executables(root: &Path, package_id: &str, names: &[String]) -> Vec<PathBuf> {
+    if !cleaning::no_reparse_ancestors(root) {
+        return Vec::new();
+    }
+    let prefix = format!("{}_", package_id.to_ascii_lowercase());
+    let mut paths = Vec::new();
+    if let Ok(entries) = fs::read_dir(root) {
+        for entry in entries.filter_map(Result::ok).take(1024) {
+            let path = entry.path();
+            if !entry
+                .file_name()
+                .to_string_lossy()
+                .to_ascii_lowercase()
+                .starts_with(&prefix)
+                || !path.is_dir()
+                || !cleaning::no_reparse_ancestors(&path)
+            {
+                continue;
+            }
+            for file in WalkDir::new(&path)
+                .follow_links(false)
+                .max_depth(4)
+                .into_iter()
+                .filter_entry(|e| cleaning::no_reparse_ancestors(e.path()))
+                .take(1024)
+                .filter_map(Result::ok)
+            {
+                if file.file_type().is_file()
+                    && names.iter().any(|name| {
+                        file.file_name()
+                            .to_string_lossy()
+                            .eq_ignore_ascii_case(name)
+                    })
+                {
+                    paths.push(file.path().to_path_buf());
+                }
+            }
+        }
+    }
+    paths.sort();
+    paths
+}
+
+#[cfg(test)]
+mod portable_component_tests {
+    use super::*;
+    #[test]
+    fn package_lookup_requires_exact_id_and_known_executable() {
+        let temp = tempfile::tempdir().unwrap();
+        let good = temp
+            .path()
+            .join("BluePointLilac.ContextMenuManager_Source/nested");
+        fs::create_dir_all(&good).unwrap();
+        let executable = good.join("ContextMenuManager.exe");
+        fs::write(&executable, b"fixture").unwrap();
+        fs::write(good.join("Uninstall.exe"), b"fixture").unwrap();
+        let wrong = temp
+            .path()
+            .join("BluePointLilac.ContextMenuManagerExtra_Source");
+        fs::create_dir_all(&wrong).unwrap();
+        fs::write(wrong.join("ContextMenuManager.exe"), b"fixture").unwrap();
+        assert_eq!(
+            portable_package_executables(
+                temp.path(),
+                "BluePointLilac.ContextMenuManager",
+                &["ContextMenuManager.exe".into()]
+            ),
+            vec![executable]
+        );
+        assert!(portable_package_executables(
+            temp.path(),
+            "Other.Package",
+            &["ContextMenuManager.exe".into()]
+        )
+        .is_empty());
+    }
+    #[test]
+    #[ignore = "read-only installed ContextMenuManager lookup; never launches or repairs"]
+    fn installed_context_menu_manager_portable_entry_is_found() {
+        let root = local_app_data_dir()
+            .unwrap()
+            .join("Microsoft/WinGet/Packages");
+        let paths = portable_package_executables(
+            &root,
+            "BluePointLilac.ContextMenuManager",
+            &[
+                "ContextMenuManager.exe".into(),
+                "ContextMenuManager.NET.4.0.exe".into(),
+            ],
+        );
+        assert!(find_first_existing_path(&paths).is_some());
+    }
 }
 
 fn search_paths_for_executable(
@@ -525,7 +622,7 @@ fn build_component_definition(
     install_size: Option<&'static str>,
     winget_id: Option<&'static str>,
     homepage: Option<&'static str>,
-    detect_paths: Vec<PathBuf>,
+    mut detect_paths: Vec<PathBuf>,
     launch_arguments: Vec<String>,
     install_dir_name: Option<&'static str>,
     recommended: bool,
@@ -533,6 +630,29 @@ fn build_component_definition(
     supports_uninstall: bool,
     supports_update: bool,
 ) -> ComponentDefinition {
+    if find_first_existing_path(&detect_paths).is_none() {
+        if let Some(package_id) = winget_id {
+            let mut names: Vec<String> = detect_paths
+                .iter()
+                .filter_map(|path| path.file_name())
+                .map(|name| name.to_string_lossy().into_owned())
+                .collect();
+            if id == "context-menu-manager" {
+                names.push("ContextMenuManager.NET.4.0.exe".into());
+            }
+            names.sort();
+            names.dedup();
+            let roots = [
+                local_app_data_dir().map(|p| p.join("Microsoft/WinGet/Packages")),
+                program_files_dir().map(|p| p.join("WinGet/Packages")),
+                std::env::var_os("ProgramFiles(x86)")
+                    .map(|p| PathBuf::from(p).join("WinGet/Packages")),
+            ];
+            for root in roots.into_iter().flatten() {
+                detect_paths.extend(portable_package_executables(&root, package_id, &names));
+            }
+        }
+    }
     let launch_path = find_first_existing_path(&detect_paths);
     let winget_installed =
         launch_path.is_none() && winget_id.map(winget_package_installed).unwrap_or(false);
@@ -570,14 +690,14 @@ fn build_component_definition(
         installed,
         status: status.clone(),
         status_label: if status == "repairable" {
-            "可修复".to_string()
+            "入口未找到".to_string()
         } else if installed {
             "可用".to_string()
         } else {
             "未安装".to_string()
         },
         summary: if status == "repairable" {
-            format!("{name} 的组件文件缺失或入口异常，可点击修复恢复。")
+            format!("{name} 已有安装记录，但尚未定位启动入口。")
         } else if installed {
             format!("{name} 已就绪，可以直接使用。")
         } else if winget_id.is_some() {
@@ -1232,12 +1352,10 @@ fn launch_component_internal(component_id: &str) -> Result<ToolActionResult, Str
             "launch_component",
             "启动组件",
             false,
-            "组件文件缺失，可点击修复后重试。",
+            "已有安装记录，但未找到启动文件。",
             component.summary,
             component.install_dir,
-            vec![String::from(
-                "WinEase 检测到安装记录还在，但启动入口已经丢失。",
-            )],
+            vec![String::from("请检查安装位置；未找到入口不代表软件损坏。")],
             started_at,
         ))
     } else if let Some(homepage) = component.homepage.clone() {

@@ -23,3 +23,9 @@
 组件任务按软件独立记录，组件页和设置页仅禁用正在操作的软件，其他软件仍可打开或提交安装、更新等任务。前后端都拒绝同一软件的重复操作；完成或失败只释放本软件的任务状态。后台更新检查不与用户更新共用全局锁。不同安装器是否能真正同时安装由 winget/Windows 安装服务决定，若安装器报告忙碌，展示该任务的失败结果，不冻结其他组件。浏览器模拟验证多个更新及安装同时提交、其他软件打开、页面切换、失败与乱序完成；没有在用户设备安装或更新软件来验证并行安装器行为。
 
 官方依据：[WinGet list](https://learn.microsoft.com/en-us/windows/package-manager/winget/list)。
+
+## 便携组件入口
+
+右键菜单管理器的 WinGet 安装清单为 portable，实际可执行文件安装在 WinGet Packages 中。原先仅检查常规 Program Files/Programs 路径，导致已安装被误判为“可修复”。现对固定组件包 ID 检查当前用户及机器的便携包目录，只匹配该包目录前缀及已知 EXE 名称，限定深度和数量，拒绝链接穿透。其他组件共用此补充识别。已安装组件保留“打开”，未定位入口时说明事实，不直接推断软件损坏或强制修复。
+
+本机右键菜单管理器入口只读识别通过，EXE 的 SHA-256 与 [官方 WinGet 安装清单](https://raw.githubusercontent.com/microsoft/winget-pkgs/master/manifests/b/BluePointLilac/ContextMenuManager/3.3.3.1/BluePointLilac.ContextMenuManager.installer.yaml)一致。隔离目录验证包 ID 边界和 EXE 白名单；模拟界面验证打开按钮发送启动命令，没有触发修复。未重新安装软件。
