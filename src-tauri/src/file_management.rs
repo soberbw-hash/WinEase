@@ -28,7 +28,7 @@ struct ScanJob {
     cancel: Arc<AtomicBool>,
 }
 impl FileState {
-    fn cancel_jobs(&self, duplicates: Option<bool>) {
+    pub(crate) fn cancel_jobs(&self, duplicates: Option<bool>) {
         for (index, job) in self.jobs.iter().enumerate() {
             if duplicates.is_none_or(|mode| usize::from(mode) == index) {
                 job.cancel.store(true, Ordering::SeqCst);
@@ -68,16 +68,16 @@ fn path_within(path: &Path, root: &Path) -> bool {
             .to_lowercase(),
     ))
 }
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileRow {
-    id: usize,
-    path: String,
-    name: String,
-    size_bytes: u64,
-    group: Option<usize>,
-    can_recycle: bool,
-    modified_at: u64,
+    pub id: usize,
+    pub path: String,
+    pub name: String,
+    pub size_bytes: u64,
+    pub group: Option<usize>,
+    pub can_recycle: bool,
+    pub modified_at: u64,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -90,12 +90,12 @@ pub struct UsageNode {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileScan {
-    scan_id: String,
-    files: Vec<FileRow>,
-    skipped: usize,
-    limited: bool,
+    pub scan_id: String,
+    pub files: Vec<FileRow>,
+    pub skipped: usize,
+    pub limited: bool,
     usage: Vec<UsageNode>,
-    total_bytes: u64,
+    pub total_bytes: u64,
     breakdown: Vec<StorageCategory>,
 }
 #[derive(Serialize)]
@@ -237,10 +237,19 @@ fn hash_file(path: &Path, cancel: &AtomicBool, started: Instant) -> Result<Vec<u
     }
     Ok(digest.finalize().to_vec())
 }
+#[cfg(test)]
 fn scan_files(
     root: PathBuf,
     duplicates: bool,
     cancel: &AtomicBool,
+) -> Result<(Scan, usize, bool, Vec<UsageNode>, u64, Vec<StorageCategory>), String> {
+    scan_files_budget(root, duplicates, cancel, 180)
+}
+fn scan_files_budget(
+    root: PathBuf,
+    duplicates: bool,
+    cancel: &AtomicBool,
+    seconds: u64,
 ) -> Result<(Scan, usize, bool, Vec<UsageNode>, u64, Vec<StorageCategory>), String> {
     if !root.is_absolute() || !root.is_dir() || !no_reparse_ancestors(&root) {
         return Err("目录不存在或包含链接。".into());
@@ -291,7 +300,7 @@ fn scan_files(
         if cancel.load(Ordering::SeqCst) {
             return Err("扫描已取消".into());
         }
-        if visited >= 200_000 || started.elapsed() > Duration::from_secs(180) {
+        if visited >= 200_000 || started.elapsed() > Duration::from_secs(seconds) {
             limited = true;
             break;
         }
@@ -467,6 +476,21 @@ pub async fn scan_personal_files(
     duplicates: bool,
     state: tauri::State<'_, FileState>,
 ) -> Result<FileScan, String> {
+    scan_for_state(root, duplicates, &state).await
+}
+pub(crate) async fn scan_for_state(
+    root: String,
+    duplicates: bool,
+    state: &FileState,
+) -> Result<FileScan, String> {
+    scan_for_state_budget(root, duplicates, state, 180).await
+}
+pub(crate) async fn scan_for_state_budget(
+    root: String,
+    duplicates: bool,
+    state: &FileState,
+    seconds: u64,
+) -> Result<FileScan, String> {
     let job = &state.jobs[usize::from(duplicates)];
     if job.busy.swap(true, Ordering::SeqCst) {
         return Err("扫描正在进行。".into());
@@ -477,7 +501,7 @@ pub async fn scan_personal_files(
     let cancel = job.cancel.clone();
     let (scan, skipped, limited, usage, total_bytes, breakdown) =
         tauri::async_runtime::spawn_blocking(move || {
-            scan_files(PathBuf::from(root), duplicates, &cancel)
+            scan_files_budget(PathBuf::from(root), duplicates, &cancel, seconds)
         })
         .await
         .map_err(|e| e.to_string())??;
@@ -514,7 +538,7 @@ pub async fn scan_personal_files(
     };
     let mut scans = state.scan.lock().map_err(|e| e.to_string())?;
     scans.retain(|item| item.created.elapsed() < Duration::from_secs(900));
-    if scans.len() >= 6 {
+    if scans.len() >= 32 {
         scans.remove(0);
     }
     scans.push(scan);
@@ -570,6 +594,22 @@ pub async fn recycle_selected_files(
     ids: Vec<usize>,
     state: tauri::State<'_, FileState>,
 ) -> Result<String, String> {
+    recycle_for_state(scan_id, ids, &state).await
+}
+pub(crate) async fn recycle_for_state(
+    scan_id: String,
+    ids: Vec<usize>,
+    state: &FileState,
+) -> Result<String, String> {
+    recycle_for_state_result(scan_id, ids, state)
+        .await
+        .map(|(message, _)| message)
+}
+pub(crate) async fn recycle_for_state_result(
+    scan_id: String,
+    ids: Vec<usize>,
+    state: &FileState,
+) -> Result<(String, usize), String> {
     if state.busy.swap(true, Ordering::SeqCst) {
         return Err("任务正在进行。".into());
     }
@@ -597,7 +637,10 @@ pub async fn recycle_selected_files(
                 Err(_) => failed += 1,
             }
         }
-        Ok(format!("已移到回收站 {count} 个文件，未移动 {failed} 个。"))
+        Ok((
+            format!("已移到回收站 {count} 个文件，未移动 {failed} 个。"),
+            failed,
+        ))
     })
     .await
     .map_err(|e| e.to_string())?

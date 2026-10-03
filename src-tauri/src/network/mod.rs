@@ -19,7 +19,7 @@ const CONNECTIVITY: &str = include_str!("../../resources/network/connectivity.ps
 const REPAIR: &str = include_str!("../../resources/network/repair.ps1");
 const RESTORE: &str = include_str!("../../resources/network/restore.ps1");
 static LOCK: Mutex<()> = Mutex::new(());
-static SCAN: Mutex<Option<(Instant, Scan)>> = Mutex::new(None);
+static SCAN: Mutex<Vec<(Instant, Scan)>> = Mutex::new(Vec::new());
 pub fn arr<'a>(value: &'a Value, key: &str) -> &'a [Value] {
     value[key].as_array().map(Vec::as_slice).unwrap_or(&[])
 }
@@ -331,7 +331,11 @@ fn scan(root: &Path) -> Result<Scan, String> {
 }
 fn remember(scan: &Scan) {
     if let Ok(mut cache) = SCAN.lock() {
-        *cache = Some((Instant::now(), scan.clone()));
+        cache.retain(|(time, item)| time.elapsed().as_secs() <= 600 && item.id != scan.id);
+        if cache.len() >= 8 {
+            cache.remove(0);
+        }
+        cache.push((Instant::now(), scan.clone()));
     }
 }
 fn snapshot_path(root: &Path, id: &str) -> Result<PathBuf, String> {
@@ -570,10 +574,10 @@ pub async fn network_repair(
         unfinished(&root)?;
         let approved = {
             let cache = SCAN.lock().map_err(|_| "检查状态异常")?;
-            let (time, scan) = cache.as_ref().ok_or("请先检查网络")?;
-            if time.elapsed().as_secs() > 600 || scan.id != scan_id {
-                return Err("检查结果已过期，请重新检查网络".into());
-            }
+            let (_, scan) = cache
+                .iter()
+                .find(|(time, item)| time.elapsed().as_secs() <= 600 && item.id == scan_id)
+                .ok_or("检查结果已过期，请重新检查网络")?;
             scan.clone()
         };
         let current = scan(&root)?;
@@ -727,8 +731,8 @@ pub async fn network_restore(backup_id: String) -> Result<RepairResult, String> 
 pub async fn network_export_report(scan_id: String) -> Result<String, String> {
     let cache = SCAN.lock().map_err(|_| "检测状态异常")?;
     let (_, scan) = cache
-        .as_ref()
-        .filter(|(_, s)| s.id == scan_id)
+        .iter()
+        .find(|(time, s)| s.id == scan_id && time.elapsed().as_secs() <= 600)
         .ok_or("请先检查网络")?;
     let directory = root()?.join("reports");
     fs::create_dir_all(&directory).map_err(|e| e.to_string())?;

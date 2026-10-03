@@ -1,4 +1,4 @@
-import type { HomeQuickAction, SectionId } from "./types";
+import type { SectionId } from "./types";
 export const bossModeShortcut = "Ctrl + Alt + B";
 export const sections: Array<{ id: SectionId; label: string }> = [
   { id: "home", label: "首页" },
@@ -8,21 +8,6 @@ export const sections: Array<{ id: SectionId; label: string }> = [
   { id: "system", label: "系统工具" },
   { id: "components", label: "组件" },
   { id: "settings", label: "设置" },
-];
-export const homeQuickActions: HomeQuickAction[] = [
-  {
-    id: "open_cleaning",
-    title: "深度清理",
-    description: "扫描临时文件与缓存",
-    tone: "primary",
-  },
-  {
-    id: "open_health",
-    title: "电脑体检",
-    description: "检查空间、内存与系统状态",
-  },
-  { id: "open_storage", title: "大文件", description: "查找占用空间的文件" },
-  { id: "open_startup", title: "开机管理", description: "管理自动启动应用" },
 ];
 export const windowsSettingLinks = [
   { label: "存储设置", target: "ms-settings:storagesense" },

@@ -34,7 +34,7 @@ struct Scan {
     files: Vec<Candidate>,
     skipped: u64,
 }
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Category {
     id: &'static str,
@@ -42,26 +42,26 @@ pub struct Category {
     size_bytes: u64,
     file_count: u64,
 }
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CleaningScan {
-    scan_id: String,
+    pub scan_id: String,
     categories: Vec<Category>,
     skipped_entries: u64,
-    groups: Vec<CleaningGroup>,
+    pub groups: Vec<CleaningGroup>,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CleaningGroup {
-    id: String,
-    label: String,
-    category: &'static str,
-    path: String,
-    size_bytes: u64,
-    file_count: u64,
-    recommended: bool,
-    icon_target: Option<String>,
+    pub id: String,
+    pub label: String,
+    pub category: &'static str,
+    pub path: String,
+    pub size_bytes: u64,
+    pub file_count: u64,
+    pub recommended: bool,
+    pub icon_target: Option<String>,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -190,15 +190,25 @@ pub fn cleaning_files(
     offset: usize,
     state: tauri::State<'_, CleaningState>,
 ) -> Result<CleaningFiles, String> {
+    files_for_state(
+        &state,
+        scan_id,
+        group_ids.unwrap_or_else(|| vec![group_id]),
+        offset,
+    )
+}
+pub(crate) fn files_for_state(
+    state: &CleaningState,
+    scan_id: String,
+    group_ids: Vec<String>,
+    offset: usize,
+) -> Result<CleaningFiles, String> {
     let lock = state.0.lock().map_err(|_| "清理任务状态异常")?;
     let scan = lock.as_ref().ok_or("请重新扫描")?;
     if scan.id != scan_id || scan.created.elapsed() > SCAN_TTL {
         return Err("扫描结果已失效，请重新扫描".into());
     }
-    let ids: std::collections::HashSet<_> = group_ids
-        .unwrap_or_else(|| vec![group_id])
-        .into_iter()
-        .collect();
+    let ids: std::collections::HashSet<_> = group_ids.into_iter().collect();
     inspect_files(scan, ids, offset)
 }
 fn inspect_files(
@@ -428,11 +438,25 @@ fn clean_scan(scan: Scan, categories: &[String]) -> ToolActionResult {
 
 #[tauri::command]
 pub async fn scan_cleaning(state: tauri::State<'_, CleaningState>) -> Result<CleaningScan, String> {
+    scan_for_state(&state).await
+}
+pub(crate) async fn scan_for_state(state: &CleaningState) -> Result<CleaningScan, String> {
     let root = local_app_data_dir()
         .ok_or("无法定位当前用户临时目录。")?
         .join("Temp");
     let scan = tauri::async_runtime::spawn_blocking(move || {
-        let mut scan = scan_root(&root)?;
+        // A fresh profile may have no Temp directory. Other cache roots still need scanning.
+        let mut scan = if root.is_dir() {
+            scan_root(&root)?
+        } else {
+            Scan {
+                id: uuid::Uuid::new_v4().to_string(),
+                roots: Vec::new(),
+                created: Instant::now(),
+                files: Vec::new(),
+                skipped: 0,
+            }
+        };
         let local = root.parent().ok_or("无法定位用户目录")?;
         for path in [
             local.join("D3DSCache"),
@@ -592,10 +616,45 @@ pub async fn clean_selected(
     category_ids: Vec<String>,
     state: tauri::State<'_, CleaningState>,
 ) -> Result<ToolActionResult, String> {
-    let scan = take_scan(&state, &scan_id, &category_ids)?;
+    clean_for_state(&state, scan_id, category_ids).await
+}
+pub(crate) async fn clean_for_state(
+    state: &CleaningState,
+    scan_id: String,
+    category_ids: Vec<String>,
+) -> Result<ToolActionResult, String> {
+    let scan = take_scan(state, &scan_id, &category_ids)?;
     tauri::async_runtime::spawn_blocking(move || clean_scan(scan, &category_ids))
         .await
         .map_err(|e| e.to_string())
+}
+
+pub(crate) fn candidate_paths(state: &CleaningState) -> Vec<String> {
+    state
+        .0
+        .lock()
+        .ok()
+        .and_then(|slot| {
+            slot.as_ref().map(|scan| {
+                scan.files
+                    .iter()
+                    .map(|file| {
+                        file.path
+                            .to_string_lossy()
+                            .trim_start_matches(r"\\?\")
+                            .to_lowercase()
+                    })
+                    .collect()
+            })
+        })
+        .unwrap_or_default()
+}
+#[cfg(test)]
+pub(crate) fn fixture_scan(root: &Path, state: &CleaningState) -> CleaningScan {
+    let scan = scan_root(root).unwrap();
+    let summary = scan.summary();
+    *state.0.lock().unwrap() = Some(scan);
+    summary
 }
 
 #[cfg(test)]

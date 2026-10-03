@@ -3,7 +3,7 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { AppUpdater } from "./AppUpdater";
 import { BossModeOverlay } from "./BossModeOverlay";
-import { homeQuickActions, sections } from "./content";
+import { sections } from "./content";
 import { getBossModeViewState } from "./fakeUpdate";
 import { InfoDrawer } from "./InfoDrawer";
 import { useAppSettings } from "./hooks/useAppSettings";
@@ -227,6 +227,9 @@ function App() {
       );
       setActiveSection("applications");
     } else if (id === "open_system") setActiveSection("system");
+    else if (id === "open_devices" || id === "open_reliability") {
+      void invoke("open_health_tool", {tool: id}).catch(error => pushToast(String(error), true));
+    } else if (id.startsWith("ms-settings:") || id.startsWith("windowsdefender:") || /^[A-Za-z]:[\\/]/.test(id)) void openTarget(id);
     else void runAction(id as ActionId);
   }
   async function toggleBossMode(enabled: boolean) {
@@ -343,12 +346,7 @@ function App() {
   function renderPage() {
     switch (activeSection) {
       case "home":
-        return (
-          <HomePage
-            quickActions={homeQuickActions}
-            onQuickAction={quickAction}
-          />
-        );
+        return null;
       case "cleaning":
         return <CleaningPage onResult={recordResult} />;
       case "health":
@@ -471,6 +469,9 @@ function App() {
                 </div>
               )}
             {renderPage()}
+            <div hidden={activeSection !== "home"}>
+              <HomePage onQuickAction={quickAction} />
+            </div>
             <div hidden={activeSection !== "efficiency"}>
               <FilesPage
                 navigationRequest={fileNavigation}

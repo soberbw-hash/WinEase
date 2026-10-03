@@ -165,6 +165,20 @@ fn change_startup_at(
     if name.is_empty() || name.contains('\0') || name.len() > 256 {
         return Err("启动项名称无效".into());
     }
+    if !enabled
+        && user
+            .open_subkey(r"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run")
+            .ok()
+            .and_then(|key| key.get_raw_value(name).ok())
+            .is_some_and(|value| {
+                value
+                    .bytes
+                    .first()
+                    .is_some_and(|first| matches!(first, 3 | 7))
+            })
+    {
+        return Err("Windows 已停用该启动项，请重新检查。".into());
+    }
     let (source, target) = if enabled {
         (BACKUP, RUN)
     } else {
@@ -205,15 +219,8 @@ pub async fn set_startup_item(name: String, command: String, enabled: bool) -> R
 }
 
 #[tauri::command]
-pub async fn health_check() -> Result<Value, String> {
-    json_script(r#"
-$ErrorActionPreference = 'Stop'
-$os=Get-CimInstance Win32_OperatingSystem
-$drives=@(Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' | ForEach-Object { [pscustomobject]@{ name=$_.DeviceID; freeBytes=[uint64]$_.FreeSpace; totalBytes=[uint64]$_.Size } })
-$reboot=(Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending') -or (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired')
-$security='未知'; try { $m=Get-MpComputerStatus -ErrorAction Stop; $security=if($m.AntivirusEnabled -and $m.RealTimeProtectionEnabled){'实时防护已开启'}else{'实时防护未开启或由其他软件接管'} } catch { $security='无法读取 Defender 状态' }
-[pscustomobject]@{ memoryPercent=[math]::Round((1-$os.FreePhysicalMemory/$os.TotalVisibleMemorySize)*100); drives=$drives; pendingReboot=$reboot; security=$security; checkedAt=(Get-Date).ToString('o') } | ConvertTo-Json -Depth 5 -Compress
-"#.into()).await
+pub async fn health_check() -> Result<crate::health::HealthReport, String> {
+    crate::health::check().await
 }
 #[tauri::command]
 pub async fn get_power_plan() -> Result<Value, String> {

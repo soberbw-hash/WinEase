@@ -143,13 +143,6 @@ export type ToolDefinition = {
   tone?: "primary" | "default";
 };
 
-export type HomeQuickAction = {
-  id: string;
-  title: string;
-  description: string;
-  tone?: "primary" | "default";
-};
-
 export type BossModeViewState = {
   stageTitle: string;
   stageHint: string;

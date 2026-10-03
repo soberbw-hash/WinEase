@@ -3,8 +3,10 @@ mod cleaning;
 mod component_launcher;
 mod component_updates;
 mod file_management;
+mod health;
 mod management;
 mod network;
+mod optimization;
 mod system_repair;
 pub fn network_helper_entry() -> bool {
     network::helper_entry() || system_repair::helper_entry()
@@ -350,9 +352,7 @@ mod portable_component_tests {
             ],
         ))
         .unwrap();
-        let direct = Command::new(&path)
-            .creation_flags(CREATE_NO_WINDOW)
-            .spawn();
+        let direct = Command::new(&path).creation_flags(CREATE_NO_WINDOW).spawn();
         assert_eq!(
             direct.unwrap_err().raw_os_error(),
             Some(740),
@@ -2060,6 +2060,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(cleaning::CleaningState::default())
         .manage(file_management::FileState::default())
+        .manage(optimization::OptimizationState::default())
         .setup(|app| {
             popups::start_worker();
             if let Some(window) = app.get_webview_window("main") {
@@ -2115,6 +2116,11 @@ pub fn run() {
             network::speed::network_speedtest,
             network::speed::network_cancel_speedtest,
             management::health_check,
+            optimization::start_optimization_check,
+            optimization::optimization_status,
+            optimization::start_optimization,
+            optimization::optimization_files,
+            optimization::open_health_tool,
             management::get_power_plan,
             management::set_power_plan,
             management::repair_taskbar,
