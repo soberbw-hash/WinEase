@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { BossModeOverlay } from "./BossModeOverlay";
-import { homeQuickActions, sections, systemTools } from "./content";
+import { homeQuickActions, sections } from "./content";
 import { getBossModeViewState } from "./fakeUpdate";
 import { InfoDrawer } from "./InfoDrawer";
 import { useAppSettings } from "./hooks/useAppSettings";
@@ -44,7 +44,7 @@ function App() {
     useState<ManagementTab>("processes");
   const [duplicates, setDuplicates] = useState(false);
   const [history, setHistory] = useState<ToolActionResult[]>([]);
-  const [runningActionId, setRunningActionId] = useState<string | null>(null);
+  const [, setRunningActionId] = useState<string | null>(null);
   const [componentBusy, setComponentBusy] = useState<ComponentBusyState | null>(
     null,
   );
@@ -337,12 +337,7 @@ function App() {
         );
       case "system":
         return (
-          <SystemPage
-            tools={systemTools}
-            runningActionId={runningActionId}
-            onRunAction={(id) => void runAction(id)}
-            onOpenTarget={(target) => void openTarget(target)}
-          />
+          <SystemPage onOpenTarget={(target) => void openTarget(target)} />
         );
       case "components":
         return (
@@ -411,7 +406,7 @@ function App() {
           <header className="main-toolbar">
             <h2>
               {sections.find((item) => item.id === activeSection)?.label ??
-                (activeSection === "health" ? "电脑体检" : "网络检测")}
+                (activeSection === "health" ? "电脑体检" : "网络修复")}
             </h2>
             <div className="main-toolbar__actions">
               {(activeSection === "health" || activeSection === "network") && (

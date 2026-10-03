@@ -180,7 +180,8 @@ pub async fn set_windows_setting(id: String, enabled: bool) -> Result<(), String
         let item = definition(&id)?;
         let original = read_value(item)?;
         ensure_backup(&backup_path(item)?, item, original)?;
-        write_value(item, Some(if enabled { item.on } else { item.off }))
+        write_value(item, Some(if enabled { item.on } else { item.off }))?;
+        refresh_explorer()
     })
     .await
     .map_err(|e| e.to_string())?
@@ -193,10 +194,30 @@ pub async fn restore_windows_setting(id: String) -> Result<(), String> {
         let path = backup_path(item)?;
         let backup = read_backup(&path, item)?;
         write_value(item, backup.original)?;
+        refresh_explorer()?;
         fs::remove_file(path).map_err(|e| format!("已恢复，备份记录清除失败：{e}"))
     })
     .await
     .map_err(|e| e.to_string())?
+}
+fn refresh_explorer() -> Result<(), String> {
+    let capture = run_command_capture(
+        "powershell.exe",
+        &[
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            crate::management::EXPLORER_RESTART,
+        ],
+    )?;
+    if capture.success {
+        Ok(())
+    } else {
+        Err(format!(
+            "设置已保存，但资源管理器刷新失败：{}",
+            format_process_details(&capture)
+        ))
+    }
 }
 #[cfg(test)]
 mod tests {

@@ -2,6 +2,11 @@ mod application_icons;
 mod cleaning;
 mod file_management;
 mod management;
+mod network;
+mod system_repair;
+pub fn network_helper_entry() -> bool {
+    network::helper_entry() || system_repair::helper_entry()
+}
 mod popups;
 mod recycle;
 mod windows_settings;
@@ -1538,20 +1543,6 @@ fn run_powershell_json(script: &str) -> Result<String, String> {
     }
 }
 
-fn run_powershell_capture(script: &str) -> Result<ProcessCapture, String> {
-    let wrapped_script = with_powershell_utf8(script);
-    run_command_capture(
-        "powershell.exe",
-        &[
-            "-NoProfile",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-Command",
-            &wrapped_script,
-        ],
-    )
-}
-
 fn spawn_detached(program: &str, args: &[String]) -> Result<(), String> {
     Command::new(program)
         .args(args)
@@ -1689,92 +1680,6 @@ fn execute_launch_capture(use_helper: bool) -> ToolActionResult {
     }
 }
 
-fn execute_dism(action_id: &str, title: &str, args: &[&str]) -> ToolActionResult {
-    let started_at = Instant::now();
-
-    match run_command_capture("DISM.exe", args) {
-        Ok(capture) => build_action_result(
-            action_id,
-            title,
-            capture.success,
-            if capture.success {
-                format!("{title} 已完成。")
-            } else {
-                format!("{title} 执行失败。")
-            },
-            format_process_details(&capture),
-            None,
-            vec![String::from(
-                "如果 DISM 提示权限不足，请用管理员身份运行 WinEase 后重试。",
-            )],
-            started_at,
-        ),
-        Err(error) => build_action_result(
-            action_id,
-            title,
-            false,
-            format!("{title} 无法启动。"),
-            error,
-            None,
-            Vec::new(),
-            started_at,
-        ),
-    }
-}
-
-fn execute_driver_export() -> ToolActionResult {
-    let started_at = Instant::now();
-    let backup_dir = documents_dir()
-        .join("WinToolbox")
-        .join("DriverBackups")
-        .join(format!("backup-{}", unix_timestamp_slug()));
-
-    if let Err(error) = fs::create_dir_all(&backup_dir) {
-        return build_action_result(
-            "export_drivers",
-            "驱动导出备份",
-            false,
-            "驱动备份目录无法创建。",
-            error.to_string(),
-            None,
-            Vec::new(),
-            started_at,
-        );
-    }
-
-    let escaped_destination = backup_dir.to_string_lossy().replace('\'', "''");
-    let script = format!("Export-WindowsDriver -Online -Destination '{escaped_destination}'");
-
-    match run_powershell_capture(&script) {
-        Ok(capture) => build_action_result(
-            "export_drivers",
-            "驱动导出备份",
-            capture.success,
-            if capture.success {
-                format!("驱动已导出到 {}。", backup_dir.display())
-            } else {
-                "驱动导出未成功完成。".to_string()
-            },
-            format_process_details(&capture),
-            Some(backup_dir.to_string_lossy().to_string()),
-            vec![String::from("在 Windows 上导出驱动通常需要管理员权限。")],
-            started_at,
-        ),
-        Err(error) => build_action_result(
-            "export_drivers",
-            "驱动导出备份",
-            false,
-            "驱动导出无法启动。",
-            error,
-            Some(backup_dir.to_string_lossy().to_string()),
-            vec![String::from(
-                "如果系统阻止导出，请尝试以管理员身份运行应用。",
-            )],
-            started_at,
-        ),
-    }
-}
-
 fn execute_tool_action(action_id: &str, capture_helper_enabled: bool) -> ToolActionResult {
     match action_id {
         "launch_capture" => execute_launch_capture(capture_helper_enabled),
@@ -1791,17 +1696,6 @@ fn execute_tool_action(action_id: &str, capture_helper_enabled: bool) -> ToolAct
             "更新中心",
             "open_windows_update",
         ),
-        "dism_check_health" => execute_dism(
-            "dism_check_health",
-            "DISM 快速检查",
-            &["/Online", "/Cleanup-Image", "/CheckHealth"],
-        ),
-        "dism_scan_health" => execute_dism(
-            "dism_scan_health",
-            "DISM 深度扫描",
-            &["/Online", "/Cleanup-Image", "/ScanHealth"],
-        ),
-        "export_drivers" => execute_driver_export(),
         _ => build_action_result(
             action_id,
             "未知动作",
@@ -2031,14 +1925,24 @@ pub fn run() {
             management::end_process,
             management::list_startup_items,
             management::set_startup_item,
-            management::network_diagnostics,
+            network::network_scan,
+            network::network_repair,
+            network::network_backups,
+            network::network_backup,
+            network::network_restore,
+            network::network_tools,
+            network::network_export_report,
+            network::speed::network_speedtest,
+            network::speed::network_cancel_speedtest,
             management::health_check,
             management::get_power_plan,
             management::set_power_plan,
             management::repair_taskbar,
+            system_repair::repair_windows,
             file_management::personal_folders,
             file_management::scan_personal_files,
             file_management::cancel_file_scan,
+            file_management::file_scan_drives,
             file_management::recycle_selected_files
         ])
         .run(tauri::generate_context!())

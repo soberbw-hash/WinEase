@@ -1,24 +1,20 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { windowsSettingLinks } from "../content";
-import type { ToolDefinition, WindowsSetting } from "../types";
+import type { WindowsSetting } from "../types";
 import { ConfirmDialog } from "../ConfirmDialog";
 
 export function SystemPage({
-  tools,
-  runningActionId,
-  onRunAction,
   onOpenTarget,
 }: {
-  tools: ToolDefinition[];
-  runningActionId: string | null;
-  onRunAction: (id: ToolDefinition["id"]) => void;
   onOpenTarget: (target: string) => void;
 }) {
   const [settings, setSettings] = useState<WindowsSetting[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [repairLog, setRepairLog] = useState("");
+  const [repairRestart, setRepairRestart] = useState(false);
   const lock = useRef(false);
   const [power, setPower] = useState<{
     mode: string;
@@ -82,9 +78,35 @@ export function SystemPage({
         { id, enabled },
       );
       await refresh();
-      setMessage("已保存，重新打开资源管理器窗口后生效。");
+      setMessage("已生效，资源管理器已自动刷新。");
     } catch (err) {
       setError(String(err));
+    } finally {
+      lock.current = false;
+      setBusy(false);
+    }
+  }
+  async function repairWindows() {
+    if (lock.current) return;
+    lock.current = true;
+    setBusy(true);
+    setError("");
+    setMessage("系统修复中，可能需要数分钟…");
+    setRepairLog("");
+    try {
+      const result = await invoke<{
+        success: boolean;
+        message: string;
+        logs: string;
+        restart: boolean;
+      }>("repair_windows");
+      setMessage(result.message);
+      setRepairLog(result.logs);
+      setRepairRestart(result.restart);
+      if (!result.success) setError(result.message);
+    } catch (e) {
+      setError(String(e));
+      setMessage("");
     } finally {
       lock.current = false;
       setBusy(false);
@@ -185,7 +207,7 @@ export function SystemPage({
         <div className="quick-path-grid">
           {windowsSettingLinks.map((item) => (
             <button
-              key={item.target}
+              key={`${item.target}:${item.label}`}
               type="button"
               className="quick-path"
               onClick={() => onOpenTarget(item.target)}
@@ -210,24 +232,30 @@ export function SystemPage({
       />
       <section className="surface">
         <div className="section-head">
-          <h2>维护工具</h2>
+          <h2>系统修复</h2>
         </div>
-        <div className="tool-grid">
-          {tools.map((tool) => (
-            <article key={tool.id} className="soft-card tool-card">
-              <h3>{tool.title}</h3>
-              <p>{tool.description}</p>
-              <button
-                className="secondary-button"
-                type="button"
-                disabled={runningActionId !== null}
-                onClick={() => onRunAction(tool.id)}
-              >
-                {runningActionId === tool.id ? "处理中…" : "运行"}
-              </button>
-            </article>
-          ))}
-        </div>
+        <p className="scope-note">
+          修复 Windows 组件并检查系统文件 · 需要管理员授权，可能使用 Windows
+          更新下载修复文件
+        </p>
+        <button
+          className="secondary-button"
+          disabled={busy}
+          onClick={() => void repairWindows()}
+        >
+          {busy ? "处理中…" : "检查并修复"}
+        </button>
+        {repairRestart && (
+          <p className="scope-note">
+            系统要求重启电脑后完成修复，请保存工作后重启。
+          </p>
+        )}
+        {repairLog && (
+          <details>
+            <summary>修复记录</summary>
+            <pre className="system-repair-log">{repairLog}</pre>
+          </details>
+        )}
       </section>
     </div>
   );

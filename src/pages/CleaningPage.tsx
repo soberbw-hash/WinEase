@@ -82,7 +82,8 @@ export function CleaningPage({
           </button>
         </div>
         <p className="scope-note">
-          临时文件、日志、图形与缩略图缓存 · 保留最近 7 天文件
+          网页、应用与图形缓存保留最近 24 小时；临时文件与错误报告保留最近 7
+          天。保留登录信息与个人文件。
         </p>
         {error && (
           <p className="inline-error" role="alert">

@@ -205,21 +205,6 @@ pub async fn set_startup_item(name: String, command: String, enabled: bool) -> R
 }
 
 #[tauri::command]
-pub async fn network_diagnostics() -> Result<Value, String> {
-    json_script(r#"
-$ErrorActionPreference = 'Stop'
-$adapters = @(Get-NetAdapter | Where-Object Status -eq Up | ForEach-Object { [pscustomobject]@{ name=$_.Name; speed=[string]$_.LinkSpeed; description=$_.InterfaceDescription } })
-$addresses = @(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | Where-Object { $_.IPAddress -notlike '127.*' } | ForEach-Object { [pscustomobject]@{ name=$_.InterfaceAlias; address=$_.IPAddress } })
-$dnsOk=$false; $dnsError=''
-try { $dnsOk = @(Resolve-DnsName www.microsoft.com -DnsOnly -QuickTimeout -ErrorAction Stop).Count -gt 0 } catch { $dnsError=$_.Exception.Message }
-$webOk=$false; $webError=''; $clock=[Diagnostics.Stopwatch]::StartNew()
-try { $r=Invoke-WebRequest -Uri 'https://www.microsoft.com' -Method Head -UseBasicParsing -TimeoutSec 8 -ErrorAction Stop; $webOk=$r.StatusCode -ge 200 -and $r.StatusCode -lt 400 } catch { $webError=$_.Exception.Message }
-$clock.Stop()
-$proxy=Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings' -ErrorAction SilentlyContinue
-[pscustomobject]@{ adapters=$adapters; addresses=$addresses; dnsOk=$dnsOk; dnsError=$dnsError; webOk=$webOk; webError=$webError; latencyMs=$clock.ElapsedMilliseconds; proxyEnabled=($proxy.ProxyEnable -eq 1); proxyServer=[string]$proxy.ProxyServer } | ConvertTo-Json -Depth 5 -Compress
-"#.into()).await
-}
-#[tauri::command]
 pub async fn health_check() -> Result<Value, String> {
     json_script(r#"
 $ErrorActionPreference = 'Stop'
@@ -261,7 +246,10 @@ pub async fn set_power_plan(mode: String) -> Result<(), String> {
 }
 #[tauri::command]
 pub async fn repair_taskbar() -> Result<(), String> {
-    json_script(r#"
+    json_script(EXPLORER_RESTART.into()).await?;
+    Ok(())
+}
+pub(crate) const EXPLORER_RESTART: &str = r#"
 $ErrorActionPreference='Stop'
 $session=(Get-Process -Id $PID).SessionId
 $shell=@(Get-Process explorer -ErrorAction SilentlyContinue | Where-Object SessionId -eq $session)
@@ -269,10 +257,13 @@ if (!$shell.Count) { throw '未找到当前会话的资源管理器' }
 $shell | Stop-Process -ErrorAction Stop
 Start-Sleep -Milliseconds 700
 if (!(Get-Process explorer -ErrorAction SilentlyContinue | Where-Object SessionId -eq $session)) { Start-Process -FilePath "$env:windir\explorer.exe" }
-'true'
-"#.into()).await?;
-    Ok(())
+for($attempt=0;$attempt -lt 20;$attempt++) {
+ if(Get-Process explorer -ErrorAction SilentlyContinue | Where-Object SessionId -eq $session){break}
+ Start-Sleep -Milliseconds 250
 }
+if(!(Get-Process explorer -ErrorAction SilentlyContinue | Where-Object SessionId -eq $session)){throw '资源管理器未重新启动'}
+'true'
+"#;
 
 #[cfg(test)]
 mod tests {

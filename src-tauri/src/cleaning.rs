@@ -2,7 +2,7 @@ use crate::{build_action_result, format_bytes, local_app_data_dir, ToolActionRes
 use serde::Serialize;
 use std::{
     fs,
-    os::windows::fs::MetadataExt,
+    os::windows::fs::{MetadataExt, OpenOptionsExt},
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicU64, Ordering},
@@ -24,6 +24,7 @@ struct Candidate {
     category: &'static str,
     size: u64,
     modified: SystemTime,
+    min_age: Duration,
 }
 struct Scan {
     id: String,
@@ -55,16 +56,19 @@ pub(super) fn no_reparse_ancestors(path: &Path) -> bool {
             .unwrap_or(false)
     })
 }
-fn eligible(metadata: &fs::Metadata, now: SystemTime) -> bool {
+fn eligible_age(metadata: &fs::Metadata, now: SystemTime, min_age: Duration) -> bool {
     metadata.is_file()
         && metadata.file_attributes() & REPARSE_POINT == 0
         && metadata
             .modified()
             .ok()
             .and_then(|modified| now.duration_since(modified).ok())
-            .is_some_and(|age| age >= MIN_AGE)
+            .is_some_and(|age| age >= min_age)
 }
 fn scan_root(root: &Path) -> Result<Scan, String> {
+    scan_root_age(root, MIN_AGE)
+}
+fn scan_root_age(root: &Path, min_age: Duration) -> Result<Scan, String> {
     if !root.is_absolute() || !no_reparse_ancestors(root) {
         return Err("临时目录不存在或包含链接，已停止扫描。".into());
     }
@@ -97,7 +101,7 @@ fn scan_root(root: &Path) -> Result<Scan, String> {
             continue;
         }
         match fs::symlink_metadata(entry.path()) {
-            Ok(metadata) if eligible(&metadata, now) => {
+            Ok(metadata) if eligible_age(&metadata, now, min_age) => {
                 let category = if entry
                     .path()
                     .extension()
@@ -112,6 +116,7 @@ fn scan_root(root: &Path) -> Result<Scan, String> {
                     category,
                     size: metadata.len(),
                     modified: metadata.modified().unwrap(),
+                    min_age,
                 });
             }
             _ => skipped += 1,
@@ -135,6 +140,10 @@ impl Scan {
             ("temporary", "临时文件"),
             ("logs", "临时日志"),
             ("caches", "图形与缩略图缓存"),
+            ("browser", "浏览器网页缓存"),
+            ("applications", "应用运行缓存"),
+            ("crashes", "崩溃转储与错误报告"),
+            ("downloads-cache", "下载与构建缓存"),
         ]
         .into_iter()
         .map(|(id, label)| {
@@ -158,9 +167,18 @@ impl Scan {
 }
 fn take_scan(state: &CleaningState, scan_id: &str, categories: &[String]) -> Result<Scan, String> {
     if categories.is_empty()
-        || categories
-            .iter()
-            .any(|id| id != "temporary" && id != "logs" && id != "caches")
+        || categories.iter().any(|id| {
+            ![
+                "temporary",
+                "logs",
+                "caches",
+                "browser",
+                "applications",
+                "crashes",
+                "downloads-cache",
+            ]
+            .contains(&id.as_str())
+        })
     {
         return Err("请选择有效的清理项目。".into());
     }
@@ -194,13 +212,25 @@ fn clean_scan(scan: Scan, categories: &[String]) -> ToolActionResult {
                 continue;
             }
         };
-        if !eligible(&metadata, SystemTime::now())
+        if !eligible_age(&metadata, SystemTime::now(), file.min_age)
             || metadata.len() != file.size
             || metadata.modified().ok() != Some(file.modified)
         {
             skipped += 1;
             continue;
         }
+        // Do not delete a cache file still held open by a browser/application writer.
+        let _exclusive = match fs::OpenOptions::new()
+            .read(true)
+            .share_mode(4)
+            .open(&file.path)
+        {
+            Ok(file) => file,
+            Err(_) => {
+                skipped += 1;
+                continue;
+            }
+        };
         match fs::remove_file(&file.path) {
             Ok(()) => {
                 freed += file.size;
@@ -232,7 +262,7 @@ pub async fn scan_cleaning(state: tauri::State<'_, CleaningState>) -> Result<Cle
             if !path.exists() {
                 continue;
             }
-            match scan_root(&path) {
+            match scan_root_age(&path, Duration::from_secs(86400)) {
                 Ok(mut cache) => {
                     if path.ends_with(r"Microsoft\Windows\Explorer") {
                         cache.files.retain(|file| {
@@ -255,6 +285,7 @@ pub async fn scan_cleaning(state: tauri::State<'_, CleaningState>) -> Result<Cle
                 Err(_) => scan.skipped += 1,
             }
         }
+        extend_cleaners(&mut scan, local);
         Ok::<_, String>(scan)
     })
     .await
@@ -262,6 +293,88 @@ pub async fn scan_cleaning(state: tauri::State<'_, CleaningState>) -> Result<Cle
     let summary = scan.summary();
     *state.0.lock().map_err(|_| "清理任务状态异常".to_string())? = Some(scan);
     Ok(summary)
+}
+fn extend_cleaners(scan: &mut Scan, local: &Path) {
+    let mut targets: Vec<(PathBuf, &'static str, Duration)> = Vec::new();
+    let cache_age = Duration::from_secs(24 * 60 * 60);
+    for relative in [
+        r"Google\Chrome\User Data",
+        r"Microsoft\Edge\User Data",
+        r"BraveSoftware\Brave-Browser\User Data",
+        r"Vivaldi\User Data",
+    ] {
+        let directory = local.join(relative);
+        if let Ok(profiles) = fs::read_dir(&directory) {
+            for profile in profiles.flatten() {
+                let name = profile.file_name().to_string_lossy().into_owned();
+                if name != "Default" && !name.starts_with("Profile ") {
+                    continue;
+                }
+                for cache in [
+                    "Cache",
+                    "Code Cache",
+                    "GPUCache",
+                    "DawnGraphiteCache",
+                    "DawnWebGPUCache",
+                ] {
+                    targets.push((profile.path().join(cache), "browser", cache_age));
+                }
+            }
+        }
+        targets.push((directory.join(r"ShaderCache"), "browser", cache_age));
+    }
+    if let Ok(profiles) = fs::read_dir(local.join(r"Mozilla\Firefox\Profiles")) {
+        for profile in profiles.flatten() {
+            targets.push((profile.path().join("cache2"), "browser", cache_age));
+        }
+    }
+    if let Some(roaming) = std::env::var_os("APPDATA") {
+        for app in ["Code", "discord", "Slack", "Microsoft\\Teams"] {
+            for cache in ["Cache", "Code Cache", "GPUCache"] {
+                targets.push((
+                    PathBuf::from(&roaming).join(app).join(cache),
+                    "applications",
+                    cache_age,
+                ));
+            }
+        }
+    }
+    for relative in [r"npm-cache\_cacache", r"pip\Cache", r"NuGet\v3-cache"] {
+        targets.push((local.join(relative), "downloads-cache", MIN_AGE));
+    }
+    for relative in [
+        r"Steam\htmlcache\Cache",
+        r"Steam\htmlcache\Code Cache",
+        r"Steam\htmlcache\GPUCache",
+    ] {
+        targets.push((local.join(relative), "applications", cache_age));
+    }
+    for relative in [
+        "CrashDumps",
+        r"Microsoft\Windows\WER\ReportArchive",
+        r"Microsoft\Windows\WER\ReportQueue",
+    ] {
+        targets.push((local.join(relative), "crashes", MIN_AGE));
+    }
+    if let Some(windows) = std::env::var_os("SystemRoot") {
+        targets.push((PathBuf::from(windows).join("Temp"), "temporary", MIN_AGE));
+    }
+    for (path, category, age) in targets {
+        if !path.is_dir() {
+            continue;
+        }
+        match scan_root_age(&path, age) {
+            Ok(mut extra) => {
+                for file in &mut extra.files {
+                    file.category = category;
+                }
+                scan.roots.extend(extra.roots);
+                scan.files.extend(extra.files);
+                scan.skipped += extra.skipped;
+            }
+            Err(_) => scan.skipped += 1,
+        }
+    }
 }
 #[tauri::command]
 pub async fn clean_selected(
@@ -298,6 +411,71 @@ mod tests {
         assert_eq!(scan.skipped, 1);
     }
     #[test]
+    fn cache_age_does_not_relax_temporary_file_protection() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("cache.bin");
+        fs::write(&path, "cache").unwrap();
+        filetime::set_file_mtime(
+            &path,
+            filetime::FileTime::from_system_time(
+                SystemTime::now() - Duration::from_secs(2 * 86400),
+            ),
+        )
+        .unwrap();
+        assert!(scan_root(root.path()).unwrap().files.is_empty());
+        assert_eq!(
+            scan_root_age(root.path(), Duration::from_secs(86400))
+                .unwrap()
+                .files
+                .len(),
+            1
+        );
+    }
+    #[test]
+    #[ignore = "read-only current-user cleanup scan; never deletes files"]
+    fn expanded_cleaners_find_actual_cache_without_deleting() {
+        let local = local_app_data_dir().unwrap();
+        let mut scan = scan_root(&local.join("Temp")).unwrap();
+        extend_cleaners(&mut scan, &local);
+        for category in scan.summary().categories {
+            println!(
+                "{}: {} files / {}",
+                category.label,
+                category.file_count,
+                format_bytes(category.size_bytes)
+            );
+        }
+        assert!(scan
+            .files
+            .iter()
+            .all(|f| scan.roots.iter().any(|r| f.path.starts_with(r))));
+        assert!(scan
+            .files
+            .iter()
+            .all(
+                |f| !["cookies", "history", "login data", "preferences"].contains(
+                    &f.path
+                        .file_name()
+                        .unwrap()
+                        .to_string_lossy()
+                        .to_lowercase()
+                        .as_str()
+                )
+            ));
+    }
+    #[test]
+    fn files_held_by_application_are_not_deleted() {
+        let root = tempfile::tempdir().unwrap();
+        let path = old_file(root.path(), "in-use.tmp");
+        let _writer = fs::OpenOptions::new()
+            .write(true)
+            .share_mode(3)
+            .open(&path)
+            .unwrap();
+        assert!(!clean_scan(scan_root(root.path()).unwrap(), &["temporary".into()]).success);
+        assert!(path.exists());
+    }
+    #[test]
     fn only_selected_category_is_deleted() {
         let root = tempfile::tempdir().unwrap();
         let temp = old_file(root.path(), "old.tmp");
@@ -327,6 +505,7 @@ mod tests {
             category: "temporary",
             size: m.len(),
             modified: m.modified().unwrap(),
+            min_age: MIN_AGE,
         });
         assert!(!clean_scan(scan, &["temporary".into()]).success);
         assert!(path.exists());

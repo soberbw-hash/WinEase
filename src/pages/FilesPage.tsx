@@ -2,14 +2,23 @@ import { useEffect, useRef, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { formatBytes } from "../format";
 import { ConfirmDialog } from "../ConfirmDialog";
+import { DiskMap, type UsageNode } from "../DiskMap";
 type Row = {
   id: number;
   name: string;
   path: string;
   sizeBytes: number;
   group: number | null;
+  canRecycle: boolean;
 };
-type Scan = { scanId: string; files: Row[]; skipped: number; limited: boolean };
+type Scan = {
+  scanId: string;
+  files: Row[];
+  skipped: number;
+  limited: boolean;
+  usage: UsageNode[];
+  totalBytes: number;
+};
 export function FilesPage({
   initialDuplicates,
   onOpenTarget,
@@ -36,11 +45,13 @@ export function FilesPage({
   useEffect(() => {
     mounted.current = true;
     if (isTauri())
-      void invoke<string[]>("personal_folders")
+      void invoke<string[]>("file_scan_drives")
         .then((items) => {
           if (mounted.current) {
             setFolders(items);
-            setRoot(items[items.length - 1] ?? "");
+            setRoot(
+              items.find((p) => p.toLowerCase() === "c:\\") ?? items[0] ?? "",
+            );
           }
         })
         .catch((e) => setError(String(e)));
@@ -147,7 +158,7 @@ export function FilesPage({
       </nav>
       <section className="surface">
         <div className="section-head">
-          <h2>{duplicates ? "重复文件检测" : "大文件检测"}</h2>
+          <h2>{duplicates ? "重复文件检测" : "磁盘空间分析"}</h2>
           <div className="button-row">
             {busy === "scan" ? (
               <button
@@ -168,24 +179,23 @@ export function FilesPage({
           </div>
         </div>
         <label className="folder-field">
-          <span>扫描目录</span>
-          <input
-            list="personal-folders"
+          <span>扫描磁盘</span>
+          <select
             value={root}
             disabled={busy !== null}
             onChange={(e) => setRoot(e.target.value)}
-            placeholder="选择或输入个人文件目录"
-          />
-          <datalist id="personal-folders">
+          >
             {folders.map((p) => (
-              <option key={p} value={p} />
+              <option key={p} value={p}>
+                {p}
+              </option>
             ))}
-          </datalist>
+          </select>
         </label>
         <p className="scope-note">
           {duplicates
             ? "按文件内容校验，每组至少保留一个。"
-            : "列出 100 MB 以上的个人文件。"}{" "}
+            : "全盘统计，方块越大占用越多；列表按大小排序。系统与应用文件只读。"}{" "}
           文件移入回收站，可恢复；清空后才释放空间。
         </p>
         {error && (
@@ -201,6 +211,16 @@ export function FilesPage({
         )}
         {scan && (
           <>
+            {!duplicates && (
+              <DiskMap
+                key={scan.scanId}
+                root={root}
+                usage={scan.usage}
+                files={scan.files}
+                total={scan.totalBytes}
+                onOpen={onOpenTarget}
+              />
+            )}
             <div className="setting-line">
               <span>
                 {scan.files.length} 个文件 · 已选 {selected.length} 个 /{" "}
@@ -234,7 +254,8 @@ export function FilesPage({
             )}
             {scan.limited && (
               <p className="scope-note">
-                扫描达到数量或时间上限，请选择更小的目录继续扫描。
+                当前为部分扫描结果，或列表仅展示最大的 2000
+                个文件；占用图按已扫描数据统计。
               </p>
             )}
             <div className="manager-list">
@@ -244,7 +265,7 @@ export function FilesPage({
                     type="checkbox"
                     aria-label={`选择 ${f.name}`}
                     checked={selected.includes(f.id)}
-                    disabled={busy !== null}
+                    disabled={busy !== null || !f.canRecycle}
                     onChange={(e) =>
                       setSelected((ids) =>
                         e.target.checked
@@ -257,6 +278,7 @@ export function FilesPage({
                     <strong>
                       {f.group !== null ? `组 ${f.group + 1} · ` : ""}
                       {f.name}
+                      {!f.canRecycle ? " · 只读" : ""}
                     </strong>
                     <small title={f.path}>{f.path}</small>
                   </div>
@@ -276,7 +298,7 @@ export function FilesPage({
             </div>
             {scan.files.length === 0 && (
               <div className="empty-state">
-                未发现{duplicates ? "重复文件" : "100 MB 以上文件"}
+                未发现{duplicates ? "重复文件" : "可读取文件"}
               </div>
             )}
             <small>跳过无法读取的项目：{scan.skipped}</small>

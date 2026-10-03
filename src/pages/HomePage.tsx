@@ -36,7 +36,7 @@ export function HomePage({
           {[
             ["open_processes", "进程管理"],
             ["open_duplicates", "重复文件"],
-            ["open_network", "网络检测"],
+            ["open_network", "网络修复"],
             ["open_system", "Windows 设置"],
             ["open_uninstall", "深度卸载"],
             ["open_popups", "弹窗管理"],

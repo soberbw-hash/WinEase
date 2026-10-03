@@ -43,8 +43,16 @@ struct Scan {
     files: Vec<Candidate>,
 }
 fn path_within(path: &Path, root: &Path) -> bool {
-    PathBuf::from(path.to_string_lossy().to_lowercase())
-        .starts_with(PathBuf::from(root.to_string_lossy().to_lowercase()))
+    PathBuf::from(
+        path.to_string_lossy()
+            .trim_start_matches(r"\\?\")
+            .to_lowercase(),
+    )
+    .starts_with(PathBuf::from(
+        root.to_string_lossy()
+            .trim_start_matches(r"\\?\")
+            .to_lowercase(),
+    ))
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -54,6 +62,15 @@ pub struct FileRow {
     name: String,
     size_bytes: u64,
     group: Option<usize>,
+    can_recycle: bool,
+}
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageNode {
+    path: String,
+    name: String,
+    size_bytes: u64,
+    file_count: u64,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -62,6 +79,45 @@ pub struct FileScan {
     files: Vec<FileRow>,
     skipped: usize,
     limited: bool,
+    usage: Vec<UsageNode>,
+    total_bytes: u64,
+}
+fn protected(path: &Path) -> bool {
+    for key in [
+        "SystemRoot",
+        "ProgramFiles",
+        "ProgramFiles(x86)",
+        "ProgramData",
+        "LOCALAPPDATA",
+        "APPDATA",
+    ] {
+        if let Some(root) = std::env::var_os(key) {
+            if path_within(path, &PathBuf::from(root)) {
+                return true;
+            }
+        }
+    }
+    path.components().any(|c| {
+        [
+            "$recycle.bin",
+            "system volume information",
+            "windows",
+            "appdata",
+            "program files",
+            "program files (x86)",
+            "programdata",
+        ]
+        .contains(&c.as_os_str().to_string_lossy().to_lowercase().as_str())
+    }) || path
+        .parent()
+        .is_some_and(|p| p.to_string_lossy().trim_end_matches('\\').ends_with(':'))
+}
+#[tauri::command]
+pub fn file_scan_drives() -> Vec<String> {
+    ('A'..='Z')
+        .map(|letter| format!("{letter}:\\"))
+        .filter(|path| Path::new(path).is_dir())
+        .collect()
 }
 fn unchanged(file: &Candidate, root: &Path) -> bool {
     file.path.starts_with(root)
@@ -93,37 +149,23 @@ fn scan_files(
     root: PathBuf,
     duplicates: bool,
     cancel: &AtomicBool,
-) -> Result<(Scan, usize, bool), String> {
+) -> Result<(Scan, usize, bool, Vec<UsageNode>, u64), String> {
     if !root.is_absolute() || !root.is_dir() || !no_reparse_ancestors(&root) {
         return Err("目录不存在或包含链接。".into());
     }
     let root = fs::canonicalize(root).map_err(|e| e.to_string())?;
-    let windows = fs::canonicalize(
+    let _windows = fs::canonicalize(
         std::env::var_os("WINDIR")
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from(r"C:\Windows")),
     )
     .map_err(|e| e.to_string())?;
-    if path_within(&root, &windows) || path_within(&windows, &root) {
-        return Err("请选择个人文件目录，不能扫描系统目录或整个系统盘。".into());
-    }
-    for key in [
-        "ProgramFiles",
-        "ProgramFiles(x86)",
-        "ProgramData",
-        "LOCALAPPDATA",
-        "APPDATA",
-    ] {
-        if let Some(path) = std::env::var_os(key).and_then(|p| fs::canonicalize(p).ok()) {
-            if path_within(&root, &path) {
-                return Err("请选择个人文件目录，应用与程序目录不在清理范围内。".into());
-            }
-        }
-    }
     let started = Instant::now();
     let mut files = Vec::new();
     let mut skipped = 0;
     let mut limited = false;
+    let mut usage: BTreeMap<PathBuf, (u64, u64)> = BTreeMap::new();
+    let mut total_bytes = 0u64;
     let walker = WalkDir::new(&root)
         .follow_links(false)
         .into_iter()
@@ -155,7 +197,27 @@ fn scan_files(
                 continue;
             }
         };
-        if m.len() == 0 || (!duplicates && m.len() < 100 * 1024 * 1024) {
+        if m.len() == 0 {
+            continue;
+        }
+        total_bytes = total_bytes.saturating_add(m.len());
+        if !duplicates {
+            for parent in entry
+                .path()
+                .ancestors()
+                .skip(1)
+                .take_while(|p| p.starts_with(&root))
+            {
+                if usage.len() >= 50000 && !usage.contains_key(parent) {
+                    limited = true;
+                    break;
+                }
+                let value = usage.entry(parent.to_path_buf()).or_default();
+                value.0 = value.0.saturating_add(m.len());
+                value.1 += 1;
+            }
+        }
+        if duplicates && protected(entry.path()) {
             continue;
         }
         if let Ok(modified) = m.modified() {
@@ -227,6 +289,24 @@ fn scan_files(
         files.retain(|f| f.group < group);
         limited = true;
     }
+    let mut usage: Vec<_> = usage
+        .into_iter()
+        .map(|(path, (size_bytes, file_count))| UsageNode {
+            name: path
+                .file_name()
+                .unwrap_or(path.as_os_str())
+                .to_string_lossy()
+                .into(),
+            path: path.to_string_lossy().into(),
+            size_bytes,
+            file_count,
+        })
+        .collect();
+    usage.sort_by(|a, b| b.size_bytes.cmp(&a.size_bytes));
+    if usage.len() > 10000 {
+        usage.truncate(10000);
+        limited = true;
+    }
     Ok((
         Scan {
             id: format!(
@@ -240,6 +320,8 @@ fn scan_files(
         },
         skipped,
         limited,
+        usage,
+        total_bytes,
     ))
 }
 #[tauri::command]
@@ -255,15 +337,18 @@ pub async fn scan_personal_files(
     state.cancel.store(false, Ordering::SeqCst);
     *state.scan.lock().map_err(|e| e.to_string())? = None;
     let cancel = state.cancel.clone();
-    let (scan, skipped, limited) = tauri::async_runtime::spawn_blocking(move || {
-        scan_files(PathBuf::from(root), duplicates, &cancel)
-    })
-    .await
-    .map_err(|e| e.to_string())??;
+    let (scan, skipped, limited, usage, total_bytes) =
+        tauri::async_runtime::spawn_blocking(move || {
+            scan_files(PathBuf::from(root), duplicates, &cancel)
+        })
+        .await
+        .map_err(|e| e.to_string())??;
     let result = FileScan {
         scan_id: scan.id.clone(),
         skipped,
         limited,
+        usage,
+        total_bytes,
         files: scan
             .files
             .iter()
@@ -279,6 +364,7 @@ pub async fn scan_personal_files(
                     .into(),
                 size_bytes: f.size,
                 group: f.group,
+                can_recycle: !protected(&f.path),
             })
             .collect(),
     };
@@ -300,6 +386,9 @@ fn validate_selection(scan: &Scan, ids: &[usize]) -> Result<Vec<Candidate>, Stri
     let mut result = Vec::new();
     for id in selected.iter() {
         let file = &scan.files[*id];
+        if protected(&file.path) {
+            return Err("系统与应用文件仅用于空间统计，不能在此删除。".into());
+        }
         if !unchanged(file, &scan.root) {
             return Err("文件已变化，请重新扫描。".into());
         }
@@ -394,6 +483,28 @@ mod tests {
             Path::new(r"C:\Windows-photos"),
             Path::new(r"c:\Windows")
         ));
+    }
+    #[test]
+    fn system_files_remain_readonly_and_extended_paths_are_normalized() {
+        assert!(protected(Path::new(r"\\?\C:\Windows\System32\a.dll")));
+        assert!(protected(Path::new(r"D:\Program Files\App\a.exe")));
+        assert!(protected(Path::new(r"\\?\C:\pagefile.sys")));
+        assert!(!protected(Path::new(r"D:\Photos\image.jpg")));
+    }
+    #[test]
+    fn space_scan_counts_small_files_and_nested_folder_totals() {
+        let root = tempfile::tempdir().unwrap();
+        fs::create_dir(root.path().join("nested")).unwrap();
+        fs::write(root.path().join("a"), [0u8; 10]).unwrap();
+        fs::write(root.path().join("nested/b"), [0u8; 30]).unwrap();
+        let (scan, _, _, usage, total) =
+            scan_files(root.path().into(), false, &AtomicBool::new(false)).unwrap();
+        assert_eq!(total, 40);
+        assert_eq!(scan.files.len(), 2);
+        assert!(usage
+            .iter()
+            .any(|n| n.name == "nested" && n.size_bytes == 30));
+        assert_eq!(usage[0].size_bytes, 40);
     }
     #[test]
     fn changed_or_outside_file_is_rejected() {

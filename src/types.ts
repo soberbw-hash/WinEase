@@ -30,10 +30,7 @@ export type ActionId =
   | "launch_capture"
   | "open_apps_features"
   | "open_notifications"
-  | "open_windows_update"
-  | "dism_check_health"
-  | "dism_scan_health"
-  | "export_drivers";
+  | "open_windows_update";
 
 export type ComponentOperation =
   "install" | "repair" | "uninstall" | "disable" | "update";
