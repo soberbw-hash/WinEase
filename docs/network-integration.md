@@ -6,7 +6,7 @@ WinEase 将网络急救箱的功能整合到“首页 → 网络修复”，沿�
 
 功能来源：[soberbw-hash/network-first-aid](https://github.com/soberbw-hash/network-first-aid)，审阅基线 `5d468bf85735d6b982c6d8426afc2e5bdf14e6bc`。版权所有者在本次任务中明确要求合并其两个产品。原始许可保留于 `src-tauri/resources/network/SOURCE-LICENSE.txt`，不改变原项目的授权条款。未复制原界面、品牌、赞助页面或独立更新器；本功能随 WinEase 构建。
 
-原仓库和已安装软件不自动删除。旧快照缺少 DNS 自动/手动来源、稳定网卡标识和完整 WinHTTP 状态，不作为本版的自动还原依据，原有数据继续保留在原软件目录。
+用户已要求在迁移后删除原仓库。完整 Git 历史及两个版本的发布文件已另行备份，并验证 Git bundle 和发布文件 SHA256；删除请求被 GitHub 拒绝，当前凭据缺少 `delete_repo` 权限，因此原仓库暂时保留。已安装的旧软件和用户数据不随仓库删除而卸载。旧快照缺少 DNS 自动/手动来源、稳定网卡标识和完整 WinHTTP 状态，不作为本版的自动还原依据，原有数据继续保留在原软件目录。
 
 | 原有能力 | WinEase 实现 |
 | --- | --- |
