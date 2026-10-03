@@ -316,6 +316,11 @@ mod portable_component_tests {
             &["ContextMenuManager.exe".into()]
         )
         .is_empty());
+        let definition = component_definitions_internal()
+            .into_iter()
+            .find(|item| item.id == "context-menu-manager")
+            .unwrap();
+        assert!(definition.supports_repair && definition.supports_update && definition.supports_uninstall);
     }
     #[test]
     #[ignore = "read-only installed ContextMenuManager lookup; never launches or repairs"]
@@ -861,9 +866,9 @@ fn component_definitions_internal() -> Vec<ComponentDefinition> {
             Vec::new(),
             Some("ContextMenuManager"),
             false,
-            false,
             true,
-            false,
+            true,
+            true,
         ),
         build_component_definition(
             "archive-tools",
@@ -1307,6 +1312,35 @@ fn uninstall_component_internal(component_id: &str) -> Result<ToolActionResult, 
 
 fn launch_component_internal(component_id: &str) -> Result<ToolActionResult, String> {
     let started_at = Instant::now();
+    // This is a portable WinGet package. Resolve and launch it directly so opening it
+    // never waits for a full winget inventory refresh or gets mistaken for repair.
+    if component_id == "context-menu-manager" {
+        let mut paths = context_menu_manager_detect_paths();
+        let root = local_app_data_dir().map(|p| p.join("Microsoft/WinGet/Packages"));
+        if let Some(root) = root {
+            paths.extend(portable_package_executables(
+                &root,
+                "BluePointLilac.ContextMenuManager",
+                &[
+                    "ContextMenuManager.exe".into(),
+                    "ContextMenuManager.NET.4.0.exe".into(),
+                ],
+            ));
+        }
+        if let Some(path) = find_first_existing_path(&paths) {
+            spawn_detached_path(&path, &[])?;
+            return Ok(build_action_result(
+                "launch_component",
+                "启动组件",
+                true,
+                "右键菜单管理已打开。",
+                format!("执行文件：{}", path.display()),
+                Some(path.to_string_lossy().into()),
+                Vec::new(),
+                started_at,
+            ));
+        }
+    }
     let components = list_components_internal();
     let component = components
         .into_iter()

@@ -29,3 +29,5 @@
 右键菜单管理器的 WinGet 安装清单为 portable，实际可执行文件安装在 WinGet Packages 中。原先仅检查常规 Program Files/Programs 路径，导致已安装被误判为“可修复”。现对固定组件包 ID 检查当前用户及机器的便携包目录，只匹配该包目录前缀及已知 EXE 名称，限定深度和数量，拒绝链接穿透。其他组件共用此补充识别。已安装组件保留“打开”，未定位入口时说明事实，不直接推断软件损坏或强制修复。
 
 本机右键菜单管理器入口只读识别通过，EXE 的 SHA-256 与 [官方 WinGet 安装清单](https://raw.githubusercontent.com/microsoft/winget-pkgs/master/manifests/b/BluePointLilac/ContextMenuManager/3.3.3.1/BluePointLilac.ContextMenuManager.installer.yaml)一致。隔离目录验证包 ID 边界和 EXE 白名单；模拟界面验证打开按钮发送启动命令，没有触发修复。未重新安装软件。
+
+右键菜单管理器现在与 Clash Verge Rev 一样提供打开、修复、更新、卸载四个入口。打开操作绕过耗时的组件总表刷新，直接启动已定位的便携 EXE；任务立即返回，组件卡片不会长时间停在“正在打开”。
