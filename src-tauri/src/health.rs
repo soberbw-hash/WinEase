@@ -59,7 +59,10 @@ fn missing(raw: &Value, id: &str) -> Option<String> {
 }
 pub(crate) fn analyze(raw: &Value) -> HealthReport {
     let mut checks = Vec::new();
-    if let Some(percent) = raw["memoryPercent"].as_f64() {
+    if let Some(percent) = raw["memoryPercent"]
+        .as_f64()
+        .filter(|value| (0.0..=100.0).contains(value) && missing(raw, "memory").is_none())
+    {
         checks.push(row("memory", "内存压力", if percent >= 85.0 {"attention"} else {"healthy"},
             if percent >= 85.0 {format!("当前占用 {percent:.0}%；建议在进程管理中关闭不用的应用，清理缓存不会增加物理内存。")}
             else {format!("当前占用 {percent:.0}%")}, Some("open_processes")));
@@ -73,12 +76,21 @@ pub(crate) fn analyze(raw: &Value) -> HealthReport {
         ));
     }
     for drive in crate::network::arr(raw, "drives") {
-        let total = drive["totalBytes"].as_u64().unwrap_or(0);
-        let free = drive["freeBytes"].as_u64().unwrap_or(0);
-        if total == 0 {
-            continue;
-        }
         let name = drive["name"].as_str().unwrap_or("磁盘");
+        let values = drive["totalBytes"]
+            .as_u64()
+            .zip(drive["freeBytes"].as_u64())
+            .filter(|(total, free)| *total > 0 && free <= total);
+        let Some((total, free)) = values else {
+            checks.push(row(
+                &format!("disk-{name}"),
+                &format!("{name} 可用空间"),
+                "unknown",
+                "未能读取有效磁盘容量".into(),
+                Some("open_storage"),
+            ));
+            continue;
+        };
         let low = free < 5 * 1024u64.pow(3)
             || (free < 20 * 1024u64.pow(3) && free as f64 / (total as f64) < 0.1);
         checks.push(row(
@@ -241,17 +253,18 @@ pub(crate) fn analyze(raw: &Value) -> HealthReport {
         ),
     ] {
         let value = raw[field].as_bool();
+        let error = missing(raw, id);
         checks.push(row(
             id,
             title,
-            if value.is_none() {
+            if value.is_none() || error.is_some() {
                 "unknown"
             } else if value == Some(true) {
                 "attention"
             } else {
                 "healthy"
             },
-            missing(raw, id).unwrap_or_else(|| {
+            error.unwrap_or_else(|| {
                 if value.is_none() {
                     "未能读取配置".into()
                 } else if value == Some(true) {
@@ -348,6 +361,23 @@ mod tests {
         for id in ["drives", "security", "firewall", "devices", "events"] {
             assert_eq!(
                 result.checks.iter().find(|r| r.id == id).unwrap().status,
+                "unknown"
+            );
+        }
+    }
+    #[test]
+    fn invalid_capacity_and_failed_configuration_are_unknown_not_zero_or_healthy() {
+        let report = analyze(
+            &json!({"memoryPercent":150,"drives":[{"name":"C:","totalBytes":100}],"pendingReboot":false,"updatesPaused":false,"errors":[{"name":"reboot","detail":"access denied"},{"name":"updates","detail":"access denied"}]}),
+        );
+        for id in ["memory", "disk-C:", "reboot", "updates"] {
+            assert_eq!(
+                report
+                    .checks
+                    .iter()
+                    .find(|row| row.id == id)
+                    .unwrap()
+                    .status,
                 "unknown"
             );
         }

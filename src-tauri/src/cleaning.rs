@@ -15,6 +15,8 @@ use walkdir::WalkDir;
 
 const MIN_AGE: Duration = Duration::from_secs(7 * 24 * 60 * 60);
 const SCAN_TTL: Duration = Duration::from_secs(15 * 60);
+const SCAN_TIME: Duration = Duration::from_secs(120);
+const SCAN_ENTRIES: usize = 500_000;
 const REPARSE_POINT: u32 = 0x400;
 static SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
@@ -33,6 +35,26 @@ struct Scan {
     created: Instant,
     files: Vec<Candidate>,
     skipped: u64,
+    limited: bool,
+}
+struct ScanBudget {
+    started: Instant,
+    visited: usize,
+    max_entries: usize,
+}
+impl Default for ScanBudget {
+    fn default() -> Self {
+        Self {
+            started: Instant::now(),
+            visited: 0,
+            max_entries: SCAN_ENTRIES,
+        }
+    }
+}
+impl ScanBudget {
+    fn exhausted(&self) -> bool {
+        self.visited >= self.max_entries || self.started.elapsed() >= SCAN_TIME
+    }
 }
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -49,6 +71,7 @@ pub struct CleaningScan {
     categories: Vec<Category>,
     skipped_entries: u64,
     pub groups: Vec<CleaningGroup>,
+    pub limited: bool,
 }
 
 #[derive(Clone, Serialize)]
@@ -263,10 +286,19 @@ fn eligible_age(metadata: &fs::Metadata, now: SystemTime, min_age: Duration) -> 
             .and_then(|modified| now.duration_since(modified).ok())
             .is_some_and(|age| age >= min_age)
 }
+#[cfg(test)]
 fn scan_root(root: &Path) -> Result<Scan, String> {
     scan_root_age(root, MIN_AGE)
 }
+#[cfg(test)]
 fn scan_root_age(root: &Path, min_age: Duration) -> Result<Scan, String> {
+    scan_root_budget(root, min_age, &mut ScanBudget::default())
+}
+fn scan_root_budget(
+    root: &Path,
+    min_age: Duration,
+    budget: &mut ScanBudget,
+) -> Result<Scan, String> {
     if !root.is_absolute() || !no_reparse_ancestors(root) {
         return Err("临时目录不存在或包含链接，已停止扫描。".into());
     }
@@ -275,6 +307,7 @@ fn scan_root_age(root: &Path, min_age: Duration) -> Result<Scan, String> {
     let mut files = Vec::new();
     let mut skipped = 0;
     let mut linked = 0;
+    let mut limited = false;
     let walker = WalkDir::new(&root)
         .follow_links(false)
         .into_iter()
@@ -288,6 +321,11 @@ fn scan_root_age(root: &Path, min_age: Duration) -> Result<Scan, String> {
             safe
         });
     for entry in walker {
+        if budget.exhausted() {
+            limited = true;
+            break;
+        }
+        budget.visited += 1;
         let entry = match entry {
             Ok(entry) => entry,
             Err(_) => {
@@ -330,6 +368,7 @@ fn scan_root_age(root: &Path, min_age: Duration) -> Result<Scan, String> {
         created: Instant::now(),
         files,
         skipped: skipped + linked,
+        limited,
     })
 }
 impl Scan {
@@ -361,6 +400,7 @@ impl Scan {
             categories,
             skipped_entries: self.skipped,
             groups: self.groups(),
+            limited: self.limited,
         }
     }
 }
@@ -445,9 +485,10 @@ pub(crate) async fn scan_for_state(state: &CleaningState) -> Result<CleaningScan
         .ok_or("无法定位当前用户临时目录。")?
         .join("Temp");
     let scan = tauri::async_runtime::spawn_blocking(move || {
+        let mut budget = ScanBudget::default();
         // A fresh profile may have no Temp directory. Other cache roots still need scanning.
         let mut scan = if root.is_dir() {
-            scan_root(&root)?
+            scan_root_budget(&root, MIN_AGE, &mut budget)?
         } else {
             Scan {
                 id: uuid::Uuid::new_v4().to_string(),
@@ -455,6 +496,7 @@ pub(crate) async fn scan_for_state(state: &CleaningState) -> Result<CleaningScan
                 created: Instant::now(),
                 files: Vec::new(),
                 skipped: 0,
+                limited: false,
             }
         };
         let local = root.parent().ok_or("无法定位用户目录")?;
@@ -464,10 +506,14 @@ pub(crate) async fn scan_for_state(state: &CleaningState) -> Result<CleaningScan
             local.join(r"NVIDIA\GLCache"),
             local.join(r"Microsoft\Windows\Explorer"),
         ] {
+            if budget.exhausted() {
+                scan.limited = true;
+                break;
+            }
             if !path.exists() {
                 continue;
             }
-            match scan_root_age(&path, Duration::from_secs(86400)) {
+            match scan_root_budget(&path, Duration::from_secs(86400), &mut budget) {
                 Ok(mut cache) => {
                     if path.ends_with(r"Microsoft\Windows\Explorer") {
                         cache.files.retain(|file| {
@@ -486,11 +532,12 @@ pub(crate) async fn scan_for_state(state: &CleaningState) -> Result<CleaningScan
                     scan.roots.extend(cache.roots);
                     scan.files.extend(cache.files);
                     scan.skipped += cache.skipped;
+                    scan.limited |= cache.limited;
                 }
                 Err(_) => scan.skipped += 1,
             }
         }
-        extend_cleaners(&mut scan, local);
+        extend_cleaners(&mut scan, local, &mut budget);
         Ok::<_, String>(scan)
     })
     .await
@@ -499,7 +546,11 @@ pub(crate) async fn scan_for_state(state: &CleaningState) -> Result<CleaningScan
     *state.0.lock().map_err(|_| "清理任务状态异常".to_string())? = Some(scan);
     Ok(summary)
 }
-fn extend_cleaners(scan: &mut Scan, local: &Path) {
+fn extend_cleaners(scan: &mut Scan, local: &Path, budget: &mut ScanBudget) {
+    if budget.exhausted() {
+        scan.limited = true;
+        return;
+    }
     let mut targets: Vec<(PathBuf, &'static str, Duration)> = Vec::new();
     let cache_age = Duration::from_secs(24 * 60 * 60);
     for relative in [
@@ -587,10 +638,14 @@ fn extend_cleaners(scan: &mut Scan, local: &Path) {
         }
     }
     for (path, category, age) in targets {
+        if budget.exhausted() {
+            scan.limited = true;
+            break;
+        }
         if !path.is_dir() {
             continue;
         }
-        match scan_root_age(&path, age) {
+        match scan_root_budget(&path, age, budget) {
             Ok(mut extra) => {
                 if category == "logs" {
                     extra.files.retain(|f| {
@@ -605,6 +660,7 @@ fn extend_cleaners(scan: &mut Scan, local: &Path) {
                 scan.roots.extend(extra.roots);
                 scan.files.extend(extra.files);
                 scan.skipped += extra.skipped;
+                scan.limited |= extra.limited;
             }
             Err(_) => scan.skipped += 1,
         }
@@ -669,6 +725,37 @@ mod tests {
         );
         filetime::set_file_mtime(&path, modified).unwrap();
         path
+    }
+    #[test]
+    fn shared_scan_budget_limits_all_roots_and_retains_partial_evidence() {
+        let first = tempfile::tempdir().unwrap();
+        let second = tempfile::tempdir().unwrap();
+        for name in ["a", "b", "c"] {
+            old_file(first.path(), name);
+        }
+        old_file(second.path(), "next");
+        let mut budget = ScanBudget {
+            started: Instant::now(),
+            visited: 0,
+            max_entries: 3,
+        };
+        let partial = scan_root_budget(first.path(), MIN_AGE, &mut budget).unwrap();
+        assert!(partial.limited);
+        assert_eq!(partial.files.len(), 2);
+        assert!(partial.summary().limited);
+        let next = scan_root_budget(second.path(), MIN_AGE, &mut budget).unwrap();
+        assert!(next.limited);
+        assert!(next.files.is_empty());
+        assert!(second.path().join("next").exists());
+        let mut timed_out = ScanBudget {
+            started: Instant::now() - SCAN_TIME,
+            ..ScanBudget::default()
+        };
+        assert!(
+            scan_root_budget(first.path(), MIN_AGE, &mut timed_out)
+                .unwrap()
+                .limited
+        );
     }
     #[test]
     fn merged_detail_pages_include_all_roots_once_and_reject_unknown_roots() {
@@ -788,7 +875,7 @@ mod tests {
     fn expanded_cleaners_find_actual_cache_without_deleting() {
         let local = local_app_data_dir().unwrap();
         let mut scan = scan_root(&local.join("Temp")).unwrap();
-        extend_cleaners(&mut scan, &local);
+        extend_cleaners(&mut scan, &local, &mut ScanBudget::default());
         for category in scan.summary().categories {
             println!(
                 "{}: {} files / {}",

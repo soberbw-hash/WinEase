@@ -350,12 +350,16 @@ async fn scan_cleaning(resources: Arc<Resources>) -> Result<Findings, String> {
         )
     });
     let bytes: u64 = items.iter().map(|r| r.size_bytes).sum();
+    let mut summary = if items.is_empty() {
+        "未发现符合保留期限的清理项".to_string()
+    } else {
+        format!("发现 {} 可清理缓存", crate::format_bytes(bytes))
+    };
+    if scan.limited {
+        summary.push_str("；达到扫描上限，当前为部分清理项，可处理后重新扫描。");
+    }
     Ok(Findings {
-        summary: if items.is_empty() {
-            "未发现符合保留期限的清理项".into()
-        } else {
-            format!("发现 {} 可清理缓存", crate::format_bytes(bytes))
-        },
+        summary,
         items,
         actions,
     })

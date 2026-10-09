@@ -18,7 +18,7 @@ static SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Default)]
 pub struct FileState {
-    scan: Mutex<Vec<Scan>>,
+    scan: Arc<Mutex<Vec<Scan>>>,
     busy: AtomicBool,
     jobs: [ScanJob; 2],
 }
@@ -50,6 +50,7 @@ struct Candidate {
     group: Option<usize>,
     hash: Option<Vec<u8>>,
 }
+#[derive(Clone)]
 struct Scan {
     id: String,
     root: PathBuf,
@@ -548,7 +549,17 @@ pub(crate) async fn scan_for_state_budget(
 pub fn cancel_file_scan(duplicates: Option<bool>, state: tauri::State<'_, FileState>) {
     state.cancel_jobs(duplicates);
 }
+#[cfg(test)]
 fn validate_selection(scan: &Scan, ids: &[usize]) -> Result<Vec<Candidate>, String> {
+    let cancel = AtomicBool::new(false);
+    let started = Instant::now();
+    validate_selection_with(scan, ids, &mut |path| hash_file(path, &cancel, started))
+}
+fn validate_selection_with(
+    scan: &Scan,
+    ids: &[usize],
+    hash: &mut impl FnMut(&Path) -> Result<Vec<u8>, String>,
+) -> Result<Vec<Candidate>, String> {
     if scan.created.elapsed() > Duration::from_secs(900) {
         return Err("扫描结果已过期。".into());
     }
@@ -556,6 +567,15 @@ fn validate_selection(scan: &Scan, ids: &[usize]) -> Result<Vec<Candidate>, Stri
         return Err("请选择有效文件。".into());
     }
     let selected: HashSet<_> = ids.iter().copied().collect();
+    let mut keepers = BTreeMap::new();
+    for (index, file) in scan.files.iter().enumerate() {
+        if !selected.contains(&index) {
+            if let Some(group) = file.group {
+                keepers.entry(group).or_insert(file);
+            }
+        }
+    }
+    let mut verified = HashSet::new();
     let mut result = Vec::new();
     for id in selected.iter() {
         let file = &scan.files[*id];
@@ -566,27 +586,55 @@ fn validate_selection(scan: &Scan, ids: &[usize]) -> Result<Vec<Candidate>, Stri
             return Err("文件已变化，请重新扫描。".into());
         }
         if let Some(group) = file.group {
-            let keeper = scan
-                .files
-                .iter()
-                .enumerate()
-                .find(|(idx, f)| f.group == Some(group) && !selected.contains(idx))
-                .map(|(_, f)| f)
+            let keeper = keepers
+                .get(&group)
+                .copied()
                 .ok_or("每组重复文件必须至少保留一个。")?;
             if !unchanged(keeper, &scan.root) {
                 return Err("保留文件已变化，请重新扫描。".into());
             }
-            let cancel = AtomicBool::new(false);
-            let started = Instant::now();
-            if hash_file(&file.path, &cancel, started)? != file.hash.clone().unwrap()
-                || hash_file(&keeper.path, &cancel, started)? != file.hash.clone().unwrap()
-            {
-                return Err("文件内容已变化，请重新扫描。".into());
+            let expected = file
+                .hash
+                .as_ref()
+                .ok_or("重复文件校验数据无效，请重新扫描。")?;
+            for candidate in [file, keeper] {
+                if verified.insert(candidate.path.clone())
+                    && (hash(&candidate.path)? != *expected || !unchanged(candidate, &scan.root))
+                {
+                    return Err("文件内容已变化，请重新扫描。".into());
+                }
             }
         }
         result.push(file.clone());
     }
     Ok(result)
+}
+fn prepare_recycle(
+    scans: &Mutex<Vec<Scan>>,
+    scan_id: &str,
+    ids: &[usize],
+    hash: &mut impl FnMut(&Path) -> Result<Vec<u8>, String>,
+) -> Result<(Scan, Vec<Candidate>), String> {
+    let scan = scans
+        .lock()
+        .map_err(|e| e.to_string())?
+        .iter()
+        .find(|scan| scan.id == scan_id)
+        .cloned()
+        .ok_or("扫描结果已失效，请重新扫描。")?;
+    let files = validate_selection_with(&scan, ids, hash)?;
+    if scan.created.elapsed() > Duration::from_secs(900) {
+        return Err("扫描结果已过期，请重新扫描。".into());
+    }
+    {
+        let mut slot = scans.lock().map_err(|e| e.to_string())?;
+        let index = slot
+            .iter()
+            .position(|scan| scan.id == scan_id)
+            .ok_or("扫描结果已被替换，请重新扫描。")?;
+        slot.remove(index);
+    }
+    Ok((scan, files))
 }
 #[tauri::command]
 pub async fn recycle_selected_files(
@@ -614,21 +662,34 @@ pub(crate) async fn recycle_for_state_result(
         return Err("任务正在进行。".into());
     }
     let _guard = BusyGuard(&state.busy);
-    let scan = {
-        let mut slot = state.scan.lock().map_err(|e| e.to_string())?;
-        let index = slot
-            .iter()
-            .position(|s| s.id == scan_id)
-            .ok_or("扫描结果已失效，请重新扫描。")?;
-        validate_selection(&slot[index], &ids)?;
-        slot.remove(index)
-    };
+    let scans = state.scan.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let files = validate_selection(&scan, &ids)?;
+        // Clone evidence under a short lock. Hashing must not occupy the scan store
+        // or the async executor; other scan lanes can finish while we validate.
+        let cancel = AtomicBool::new(false);
+        let started = Instant::now();
+        let (scan, files) = prepare_recycle(&scans, &scan_id, &ids, &mut |path| {
+            hash_file(path, &cancel, started)
+        })?;
+        let selected: HashSet<_> = ids.iter().copied().collect();
+        let mut keepers = BTreeMap::new();
+        for (index, file) in scan.files.iter().enumerate() {
+            if !selected.contains(&index) {
+                if let Some(group) = file.group {
+                    keepers.entry(group).or_insert(file);
+                }
+            }
+        }
         let mut count = 0;
         let mut failed = 0;
         for f in files {
-            if !unchanged(&f, &scan.root) {
+            if !unchanged(&f, &scan.root)
+                || f.group.is_some_and(|group| {
+                    keepers
+                        .get(&group)
+                        .is_none_or(|keeper| !unchanged(keeper, &scan.root))
+                })
+            {
                 failed += 1;
                 continue;
             }
@@ -787,6 +848,66 @@ mod tests {
             files: vec![candidate(p, Some(0)), candidate(q, Some(0))],
         };
         assert!(validate_selection(&s, &[0, 1]).is_err());
+    }
+    #[test]
+    fn duplicate_validation_hashes_keeper_once_without_blocking_scan_store() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut files = Vec::new();
+        let expected = Sha256::digest(b"same").to_vec();
+        for name in ["keeper", "copy-1", "copy-2"] {
+            let path = dir.path().join(name);
+            fs::write(&path, b"same").unwrap();
+            let mut file = candidate(path, Some(0));
+            file.hash = Some(expected.clone());
+            files.push(file);
+        }
+        let scan = Scan {
+            id: "duplicates".into(),
+            root: dir.path().into(),
+            created: Instant::now(),
+            files,
+        };
+        let scans = Mutex::new(vec![scan.clone()]);
+        let mut checked = Vec::new();
+        let (_, selected) = prepare_recycle(&scans, "duplicates", &[1, 2], &mut |path| {
+            // A concurrent scan can publish evidence while duplicate hashes are read.
+            let mut store = scans.try_lock().expect("hashing held the scan store lock");
+            if !store.iter().any(|item| item.id == "new-scan") {
+                store.push(Scan {
+                    id: "new-scan".into(),
+                    ..scan.clone()
+                });
+            }
+            checked.push(path.to_path_buf());
+            Ok(expected.clone())
+        })
+        .unwrap();
+        assert_eq!(selected.len(), 2);
+        assert_eq!(checked.len(), 3);
+        assert_eq!(
+            checked
+                .iter()
+                .filter(|path| path.file_name().unwrap() == "keeper")
+                .count(),
+            1
+        );
+        assert_eq!(scans.lock().unwrap()[0].id, "new-scan");
+        assert!(dir.path().join("keeper").exists());
+    }
+    #[test]
+    fn rejected_recycle_plan_keeps_scan_evidence_and_all_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("file");
+        fs::write(&path, b"keep").unwrap();
+        let scans = Mutex::new(vec![Scan {
+            id: "scan".into(),
+            root: dir.path().into(),
+            created: Instant::now(),
+            files: vec![candidate(path.clone(), None)],
+        }]);
+        assert!(prepare_recycle(&scans, "scan", &[10], &mut |_| unreachable!()).is_err());
+        assert_eq!(scans.lock().unwrap().len(), 1);
+        assert!(path.exists());
     }
     #[test]
     fn same_size_different_content_is_not_duplicate() {

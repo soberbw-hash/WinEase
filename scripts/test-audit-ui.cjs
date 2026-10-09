@@ -1,0 +1,51 @@
+async (page) => {
+  await page.addInitScript(() => {
+    window.isTauri = true; window.calls = []; let callback = 0;
+    const cache = {scanId:'cache-scan',categories:[],skippedEntries:5,limited:true,groups:[{id:'browser:0',label:'Chrome · 网页缓存',category:'browser',path:'C:\\Cache',sizeBytes:1024**2,fileCount:1,recommended:true,iconTarget:null}]};
+    const files = {scanId:'files-scan',files:[{id:0,name:'sample.zip',path:'C:\\Downloads\\sample.zip',sizeBytes:100*1024**2,group:null,canRecycle:true,modifiedAt:1700000000}],skipped:0,limited:false,usage:[],totalBytes:100*1024**2,breakdown:[]};
+    window.__TAURI_INTERNALS__ = {transformCallback:()=>++callback,unregisterCallback:()=>{},invoke:async(cmd,args)=>{
+      window.calls.push({cmd,args});
+      if(cmd==='scan_cleaning')return new Promise(resolve=>{window.finishCleaning=()=>resolve(cache);});
+      if(cmd==='clean_selected')throw '文件已变化，请重新扫描';
+      if(cmd==='scan_personal_files')return files;
+      if(cmd==='recycle_selected_files')throw '所选文件已变化，请重新扫描';
+      if(cmd==='storage_drives')return [{path:'C:\\',totalBytes:500*1024**3,freeBytes:200*1024**3}];
+      if(cmd==='list_components'||cmd==='check_component_updates')return [];
+      if(cmd==='get_file_icon'||cmd==='get_application_icon'||cmd==='plugin:updater|check')return null;
+      return null;
+    }};
+  });
+  await page.goto('http://127.0.0.1:1420'); await page.setViewportSize({width:1280,height:820});
+  const nav = page.getByRole('navigation',{name:'主导航'});
+  if(await page.evaluate(()=>window.calls.some(call=>call.cmd==='scan_cleaning')))throw Error('Hidden cleaner scans automatically on startup');
+  await nav.getByRole('button',{name:'清理',exact:true}).click();
+  await page.getByRole('button',{name:'扫描中…',exact:true}).waitFor();
+  await nav.getByRole('button',{name:'组件',exact:true}).click();
+  await page.evaluate(()=>window.finishCleaning());
+  await nav.getByRole('button',{name:'清理',exact:true}).click();
+  const choice=page.getByRole('checkbox',{name:'选择 Chrome',exact:true}); await choice.waitFor();
+  if(!await choice.isChecked())throw Error('Cleaning results lost when completed on another page');
+  await page.getByText(/本次达到扫描时间或数量上限/).waitFor();
+  await choice.uncheck();
+  await nav.getByRole('button',{name:'首页',exact:true}).click();
+  await nav.getByRole('button',{name:'清理',exact:true}).click();
+  if(await choice.isChecked())throw Error('Navigation lost manual cleaning selection');
+  if(await page.evaluate(()=>window.calls.filter(call=>call.cmd==='scan_cleaning').length)!==1)throw Error('Returning to cleaner restarts scan');
+  await choice.check(); await page.getByRole('button',{name:'清理所选',exact:true}).click();
+  await page.getByRole('button',{name:'取消',exact:true}).click();
+  if(await page.evaluate(()=>window.calls.some(call=>call.cmd==='clean_selected')))throw Error('Cleanup ran after cancelled consent');
+  await page.getByRole('button',{name:'清理所选',exact:true}).click();
+  await page.getByRole('alertdialog').getByRole('button',{name:'清理',exact:true}).click();
+  await page.getByRole('alert').filter({hasText:'文件已变化'}).waitFor();
+  if(!await choice.isChecked())throw Error('Rejected cleanup erased review evidence');
+  await nav.getByRole('button',{name:'空间管理',exact:true}).click();
+  await page.getByRole('button',{name:/大文件/,exact:false}).click();
+  await page.getByRole('button',{name:'开始扫描',exact:true}).click();
+  await page.getByRole('checkbox',{name:/选择 sample.zip/}).check();
+  await page.getByRole('button',{name:'移到回收站',exact:true}).click();
+  await page.getByRole('alertdialog').getByRole('button',{name:'移到回收站',exact:true}).click();
+  await page.getByRole('alert').filter({hasText:'所选文件已变化'}).waitFor();
+  if(!await page.getByText('sample.zip',{exact:true}).isVisible())throw Error('Rejected recycle erased scanned list');
+  await page.screenshot({path:'output/playwright/audit-file-failure.png'});
+  return {passed:['no hidden startup cleanup scan','cross-page pending scan and selection retained','partial scan explicitly shown','cancel does not clean','rejected cleanup retains evidence','rejected recycle retains file list']};
+}

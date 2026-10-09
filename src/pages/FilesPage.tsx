@@ -179,11 +179,11 @@ export function FilesPage({
     updateTask(taskKey, {busy: "recycle", error: ""});
     try {
       const result = await invoke<string>("recycle_selected_files", {scanId: scan.scanId, ids: selected});
-      updateTask(taskKey, {message: result});
+      updateTask(taskKey, {message: result, scan: undefined});
     } catch (e) {
       updateTask(taskKey, {error: String(e)});
     } finally {
-      updateTask(taskKey, {scan: undefined, busy: null});
+      updateTask(taskKey, {busy: null});
       setSelected([]);
       locks.current.delete("recycle");
     }

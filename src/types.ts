@@ -19,6 +19,7 @@ export type CleaningScan = {
   }>;
   groups: CleaningGroup[];
   skippedEntries: number;
+  limited: boolean;
 };
 export type WindowsSetting = {
   id: string;

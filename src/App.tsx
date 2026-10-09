@@ -348,7 +348,7 @@ function App() {
       case "home":
         return null;
       case "cleaning":
-        return <CleaningPage onResult={recordResult} />;
+        return null;
       case "health":
         return <HealthPage onNavigate={quickAction} />;
       case "network":
@@ -471,6 +471,9 @@ function App() {
             {renderPage()}
             <div hidden={activeSection !== "home"}>
               <HomePage onQuickAction={quickAction} />
+            </div>
+            <div hidden={activeSection !== "cleaning"}>
+              <CleaningPage active={activeSection === "cleaning"} onResult={recordResult} />
             </div>
             <div hidden={activeSection !== "efficiency"}>
               <FilesPage

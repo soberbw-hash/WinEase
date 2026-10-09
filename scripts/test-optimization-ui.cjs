@@ -34,7 +34,7 @@ async (page) => {
       return null;
     }};
   });
-  await page.goto('http://127.0.0.1:1431'); await page.setViewportSize({width:1280,height:820});
+  await page.goto('http://127.0.0.1:1420'); await page.setViewportSize({width:1280,height:820});
   await page.screenshot({path:'output/playwright/optimization-home.png'});
   await page.getByRole('button',{name:'一键检查',exact:true}).click();
   await page.getByRole('heading',{name:'正在检查',exact:true}).waitFor();

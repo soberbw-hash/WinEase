@@ -72,8 +72,10 @@ function CacheIcon({ name }: { name: string }) {
 
 export function CleaningPage({
   onResult,
+  active = true,
 }: {
   onResult: (result: ToolActionResult) => void;
+  active?: boolean;
 }) {
   const [scan, setScan] = useState<CleaningScan | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
@@ -82,6 +84,7 @@ export function CleaningPage({
   const [result, setResult] = useState<ToolActionResult | null>(null);
   const [confirm, setConfirm] = useState(false);
   const lock = useRef(false);
+  const activated = useRef(false);
   const [expanded, setExpanded] = useState<string[]>([]);
   const [details, setDetails] = useState<
     Record<
@@ -301,8 +304,8 @@ export function CleaningPage({
     );
   }
   useEffect(() => {
-    if (isTauri()) void scanFiles();
-  }, []);
+    if (active && !activated.current && isTauri()) {activated.current = true; void scanFiles();}
+  }, [active]);
   const tree = buildCleaningTree(scan?.groups ?? []);
   const bytes =
     scan?.groups
@@ -349,11 +352,11 @@ export function CleaningPage({
       });
       setResult(next);
       onResult(next);
+      setScan(null);
+      setSelected([]);
     } catch (err) {
       setError(String(err));
     } finally {
-      setScan(null);
-      setSelected([]);
       lock.current = false;
       setBusy(null);
     }
@@ -380,6 +383,7 @@ export function CleaningPage({
             {error}
           </p>
         )}
+        {scan?.limited && <p className="inline-error" role="status">本次达到扫描时间或数量上限，以下为部分清理项；可先处理已检查的项目，再重新扫描。</p>}
         {scan ? (
           <>
             <div className="cleanup-discovery">
