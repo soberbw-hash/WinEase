@@ -1,0 +1,55 @@
+网络急救箱源码可见专有软件许可
+Network First Aid Source-Available Proprietary License
+
+Copyright (c) 2026 soberbw-hash. All Rights Reserved.
+
+1. 权利保留
+
+除本文件明确授予的权利外，网络急救箱的软件源代码、用户界面、品牌标识、文档、图片、构建脚本及其衍生内容的全部权利均由版权所有者保留。
+
+2. 源码公开不构成开源授权
+
+本仓库公开仅用于查看、评估、安全审阅、问题反馈和获取版权所有者发布的正式版本。公开访问、查看仓库或通过 GitHub 提供的功能建立分支，不代表获得复制、修改、合并、发布、分发、再许可、销售、出租、托管、部署、商业使用或制作衍生作品的许可。
+
+3. 有限的最终用户使用许可
+
+版权所有者授予接收者一项有限的、非排他的、不可转让且不可再许可的权利，仅可在其合法控制的 Windows 设备上，以个人或组织内部的非商业目的运行版权所有者发布的未修改正式二进制版本。此授权不包括源码再利用、重新打包、公开分发、转售、出租、收费服务、对外托管或制作衍生版本。
+
+4. 禁止行为
+
+未经版权所有者事先书面许可，任何个人或组织不得：
+
+- 复制、修改、翻译、合并、发布或分发本软件的全部或部分内容；
+- 将本软件、源码或衍生作品用于商业产品、收费服务、对外托管服务或向第三方提供的内部生产服务；
+- 删除或更改版权、品牌、归属或许可声明；
+- 使用本软件的名称、图标、界面或其它品牌元素，使他人误认为存在授权、合作、官方来源或认可关系；
+- 将本仓库内容作为代码数据集、模型训练材料、检索语料或自动生成衍生软件的输入，但适用法律明确允许且不得通过合同限制的情形除外；
+- 绕过本许可，通过重新打包、镜像、代下载或其它方式向第三方提供本软件。
+
+5. 第三方内容
+
+本仓库引用、调用、安装或附带的第三方代码、字体、图标、系统组件及其它内容不受本许可重新授权，仍分别适用其原始许可证、最终用户协议和使用限制。使用者必须自行遵守相应条款。
+
+6. 安全与系统修改
+
+本软件可能读取或修改操作系统网络配置。使用者应在具备合法授权、可靠备份和备用连接方式的环境中运行，并自行评估公司网络、VPN、防火墙、远程设备或其它受管理环境的政策要求。
+
+7. 无担保与责任限制
+
+在适用法律允许的最大范围内，本软件按“现状”和“可用状态”提供，不作任何明示或默示担保，包括但不限于适销性、特定用途适用性和不侵权担保。版权所有者不对因使用或无法使用本软件、系统配置变更、网络中断、数据丢失或其它后果产生的任何直接或间接损失承担责任。
+
+8. 书面许可
+
+需要复制、修改、分发、商业部署、合作开发、对外托管、重新授权或其它额外权利时，必须事先取得版权所有者单独出具的书面许可。
+
+---
+
+No permission is granted to copy, modify, merge, publish, distribute,
+sublicense, sell, repackage, host, deploy as a service, commercially use, or
+create derivative works from the Network First Aid application, source code,
+user interface, branding, documentation, or build resources, except with
+prior written permission from the copyright holder. Public availability of
+this repository does not make the software open source. The copyright holder
+grants only a limited right to run unmodified official binary releases for
+personal or internal non-commercial use. Third-party components remain
+governed by their respective licenses and terms.

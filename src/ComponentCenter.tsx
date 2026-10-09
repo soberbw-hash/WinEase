@@ -7,18 +7,16 @@ import type {
 
 type ComponentCenterProps = {
   items: ComponentManifest[];
-  busyState: ComponentBusyState | null;
+  busyState: Record<string, ComponentBusyState>;
   hiddenIds?: string[];
+  captureHelperEnabled?: boolean;
+  onToggleCaptureHelper?: (enabled: boolean) => void;
   onManage: (componentId: string, operation: ComponentOperation) => void;
   onLaunch: (componentId: string) => void;
   onOpenTarget: (target: string) => void;
 };
 
 function getCategoryTone(category: string) {
-  if (category.includes("AI")) {
-    return "component-card__icon--ai";
-  }
-
   if (category.includes("网络")) {
     return "component-card__icon--network";
   }
@@ -31,12 +29,11 @@ function getCategoryTone(category: string) {
 }
 
 function getPrimaryAction(item: ComponentManifest) {
-  if (item.status === "repairable") {
-    return { label: "修复", operation: "repair" as const };
-  }
-
   if (item.installed) {
     return { label: "打开", operation: null };
+  }
+  if (item.status === "repairable") {
+    return { label: "修复", operation: "repair" as const };
   }
 
   return { label: "安装", operation: "install" as const };
@@ -46,9 +43,10 @@ export function ComponentCenter({
   items,
   busyState,
   hiddenIds = [],
+  captureHelperEnabled = false,
+  onToggleCaptureHelper,
   onManage,
   onLaunch,
-  onOpenTarget,
 }: ComponentCenterProps) {
   const visibleItems = items.filter(
     (item) => item.kind !== "built-in" && !hiddenIds.includes(item.id),
@@ -58,12 +56,8 @@ export function ComponentCenter({
     <section className="surface">
       <div className="section-head">
         <div>
-          <p className="section-kicker">Components</p>
           <h2>组件中心</h2>
         </div>
-        <p className="section-copy">
-          装上常用增强工具，状态、版本、来源和日志入口都能在这里直接看到。
-        </p>
       </div>
 
       {visibleItems.length === 0 ? (
@@ -71,19 +65,29 @@ export function ComponentCenter({
       ) : (
         <div className="component-grid">
           {visibleItems.map((item) => {
-            const isBusy = busyState?.componentId === item.id;
+            const task = busyState[item.id];
+            const isBusy = Boolean(task);
             const primary = getPrimaryAction(item);
             const iconPath = getComponentIconPath(item.id);
 
             return (
-              <article key={item.id} className="soft-card component-card component-card--rich">
+              <article
+                key={item.id}
+                className="soft-card component-card component-card--rich"
+              >
                 <div className="component-card__top">
                   <div className="component-card__title">
-                    <span className={`component-card__icon ${getCategoryTone(item.category)}`}>
-                      {iconPath ? <img src={iconPath} alt="" /> : item.name.slice(0, 1)}
+                    <span
+                      className={`component-card__icon ${getCategoryTone(item.category)}`}
+                    >
+                      {iconPath ? (
+                        <img src={iconPath} alt="" />
+                      ) : (
+                        item.name.slice(0, 1)
+                      )}
                     </span>
                     <div>
-                      <h3>{item.name}</h3>
+                      <h3 title={item.name}>{item.name}</h3>
                       <small>{item.category}</small>
                     </div>
                   </div>
@@ -100,29 +104,21 @@ export function ComponentCenter({
                   </span>
                 </div>
 
-                <p>{item.description}</p>
-                <small>{item.summary}</small>
-
-                <div className="component-card__meta">
-                  <span>{item.version ? `版本 ${item.version}` : "版本跟随安装源"}</span>
-                  <span>{item.sourceLabel ?? "官方来源"}</span>
-                </div>
+                <p title={item.description}>{item.description}</p>
 
                 {isBusy ? (
                   <div className="component-progress">
                     <div className="component-progress__head">
-                      <span>{busyState?.stageLabel}</span>
-                      <strong>{busyState?.progress}%</strong>
-                    </div>
-                    <div className="component-progress__bar">
-                      <span style={{ width: `${busyState?.progress ?? 0}%` }} />
+                      <span>{task?.stageLabel}</span>
                     </div>
                   </div>
                 ) : null}
 
                 <div className="button-row">
                   <button
-                    className={item.installed ? "secondary-button" : "primary-button"}
+                    className={
+                      item.installed ? "secondary-button" : "primary-button"
+                    }
                     type="button"
                     disabled={isBusy}
                     onClick={() => {
@@ -136,7 +132,9 @@ export function ComponentCenter({
                     {isBusy ? "处理中..." : primary.label}
                   </button>
 
-                  {item.installed && item.supportsRepair && item.status !== "repairable" ? (
+                  {item.installed &&
+                  item.supportsRepair &&
+                  item.status !== "repairable" ? (
                     <button
                       className="ghost-button"
                       type="button"
@@ -147,6 +145,24 @@ export function ComponentCenter({
                     </button>
                   ) : null}
 
+                  {item.installed && item.supportsUpdate && (
+                    <button
+                      className={
+                        item.updateAvailable
+                          ? "secondary-button"
+                          : "ghost-button"
+                      }
+                      disabled={isBusy}
+                      onClick={() => onManage(item.id, "update")}
+                      title={
+                        item.availableVersion
+                          ? `可更新至 ${item.availableVersion}`
+                          : "检查并更新"
+                      }
+                    >
+                      更新{item.updateAvailable ? " · 新版" : ""}
+                    </button>
+                  )}
                   {item.supportsUninstall && item.installed ? (
                     <button
                       className="ghost-button"
@@ -157,36 +173,24 @@ export function ComponentCenter({
                       卸载
                     </button>
                   ) : null}
-                </div>
-
-                <div className="component-card__links">
-                  {item.sourceUrl ? (
-                    <button
-                      className="component-card__link"
-                      type="button"
-                      onClick={() => onOpenTarget(item.sourceUrl!)}
-                    >
-                      来源
-                    </button>
-                  ) : null}
-                  {item.licenseUrl ? (
-                    <button
-                      className="component-card__link"
-                      type="button"
-                      onClick={() => onOpenTarget(item.licenseUrl!)}
-                    >
-                      许可证
-                    </button>
-                  ) : null}
-                  {item.logDir ? (
-                    <button
-                      className="component-card__link"
-                      type="button"
-                      onClick={() => onOpenTarget(item.logDir!)}
-                    >
-                      日志
-                    </button>
-                  ) : null}
+                  {item.id === "capture-plus" &&
+                    item.installed &&
+                    onToggleCaptureHelper && (
+                      <label
+                        className="component-capture-toggle"
+                        title="F1 截图 · F3 贴图"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={captureHelperEnabled}
+                          disabled={isBusy}
+                          onChange={(event) =>
+                            onToggleCaptureHelper(event.target.checked)
+                          }
+                        />
+                        快捷键
+                      </label>
+                    )}
                 </div>
               </article>
             );

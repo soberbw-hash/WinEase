@@ -1,18 +1,41 @@
-export type SectionId = "home" | "system" | "components" | "efficiency" | "ai" | "settings";
+export type SectionId =
+  | "home"
+  | "health"
+  | "network"
+  | "applications"
+  | "system"
+  | "components"
+  | "efficiency"
+  | "cleaning"
+  | "settings";
+
+export type CleaningScan = {
+  scanId: string;
+  categories: Array<{
+    id: string;
+    label: string;
+    sizeBytes: number;
+    fileCount: number;
+  }>;
+  groups: CleaningGroup[];
+  skippedEntries: number;
+  limited: boolean;
+};
+export type WindowsSetting = {
+  id: string;
+  label: string;
+  enabled: boolean;
+  canRestore: boolean;
+};
 
 export type ActionId =
   | "launch_capture"
-  | "one_click_clean"
   | "open_apps_features"
   | "open_notifications"
-  | "open_windows_update"
-  | "dism_check_health"
-  | "dism_scan_health"
-  | "export_drivers"
-  | "enable_beast_mode"
-  | "restore_balanced_mode";
+  | "open_windows_update";
 
-export type ComponentOperation = "install" | "repair" | "uninstall" | "disable" | "update";
+export type ComponentOperation =
+  "install" | "repair" | "uninstall" | "disable" | "update";
 
 export type SystemSnapshot = {
   hostName: string;
@@ -54,20 +77,6 @@ export type StorageHotspot = {
   itemCount: number;
 };
 
-export type AiRuntimeStatus = {
-  ollamaInstalled: boolean;
-  ollamaRunning: boolean;
-  availableModels: string[];
-  qclawInstalled: boolean;
-  paletteReady: boolean;
-  suggestedEntry: string;
-};
-
-export type AiChatResponse = {
-  model: string;
-  answer: string;
-};
-
 export type ComponentStatus = "not-installed" | "installed" | "repairable";
 
 export type ComponentBusyState = {
@@ -78,6 +87,8 @@ export type ComponentBusyState = {
 };
 
 export type ComponentManifest = {
+  updateAvailable?: boolean;
+  availableVersion?: string | null;
   id: string;
   name: string;
   description: string;
@@ -133,21 +144,6 @@ export type ToolDefinition = {
   tone?: "primary" | "default";
 };
 
-export type HomeQuickAction = {
-  id: string;
-  title: string;
-  description: string;
-  tone?: "primary" | "default";
-};
-
-export type AiAssessment = {
-  tier: string;
-  headline: string;
-  models: string[];
-  runtime: string;
-  notes: string[];
-};
-
 export type BossModeViewState = {
   stageTitle: string;
   stageHint: string;
@@ -159,11 +155,16 @@ export type BossModeViewState = {
 };
 
 export type AppSettings = {
-  density: "auto" | "compact" | "standard" | "comfortable";
-  scale: "auto" | "compact" | "standard" | "relaxed";
-  fontPreset: "harmony" | "system";
-  startOnBoot: boolean;
-  saveToClipboardFirst: boolean;
-  screenshotFolder: string;
   captureHelperEnabled: boolean;
+};
+
+export type CleaningGroup = {
+  iconTarget?: string | null;
+  id: string;
+  label: string;
+  category: string;
+  path: string;
+  sizeBytes: number;
+  fileCount: number;
+  recommended: boolean;
 };

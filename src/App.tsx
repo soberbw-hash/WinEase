@@ -1,747 +1,521 @@
 import { useEffect, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { getAiAssessment } from "./ai";
-import { AiPalette } from "./AiPalette";
+import { AppUpdater } from "./AppUpdater";
 import { BossModeOverlay } from "./BossModeOverlay";
-import {
-  bossModeShortcut,
-  homeQuickActions,
-  sectionCatalog,
-  sections,
-  systemTools,
-} from "./content";
+import { sections } from "./content";
 import { getBossModeViewState } from "./fakeUpdate";
 import { InfoDrawer } from "./InfoDrawer";
 import { useAppSettings } from "./hooks/useAppSettings";
-import { useResponsiveLayout } from "./hooks/useResponsiveLayout";
-import { AiPage } from "./pages/AiPage";
+import { CleaningPage } from "./pages/CleaningPage";
 import { ComponentsPage } from "./pages/ComponentsPage";
-import { EfficiencyPage } from "./pages/EfficiencyPage";
+import { FilesPage } from "./pages/FilesPage";
+import { HealthPage } from "./pages/HealthPage";
+import { NetworkPage } from "./pages/NetworkPage";
+import { ManagementPage, type ManagementTab } from "./pages/ManagementPage";
 import { HomePage } from "./pages/HomePage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { SystemPage } from "./pages/SystemPage";
 import { SupportModal } from "./SupportModal";
+import { ConfirmDialog } from "./ConfirmDialog";
 import type {
   ActionId,
-  AiChatResponse,
-  AiRuntimeStatus,
   BossModeViewState,
   ComponentBusyState,
   ComponentManifest,
   ComponentOperation,
   SectionId,
-  StorageHotspot,
   SystemSnapshot,
   ThirdPartyNotice,
   ToolActionResult,
 } from "./types";
 import "./App.css";
 
-type ToastState = {
-  message: string;
-  tone: "info" | "error";
-} | null;
-
-type StartupState = {
-  visible: boolean;
-  progress: number;
-  title: string;
-  detail: string;
-};
-
-const startupInitialState: StartupState = {
-  visible: true,
-  progress: 8,
-  title: "正在启动 Win Toolbox",
-  detail: "先把主界面准备好，稍后会继续读取当前机器和组件状态。",
-};
-
-const componentStageCatalog: Record<
-  ComponentOperation | "launch",
-  Array<{ progress: number; label: string }>
-> = {
-  install: [
-    { progress: 16, label: "正在准备安装包" },
-    { progress: 46, label: "正在解压文件" },
-    { progress: 82, label: "正在写入组件信息" },
-  ],
-  repair: [
-    { progress: 18, label: "正在校验组件文件" },
-    { progress: 58, label: "正在补齐缺失内容" },
-    { progress: 86, label: "正在恢复组件状态" },
-  ],
-  uninstall: [
-    { progress: 20, label: "正在准备卸载" },
-    { progress: 62, label: "正在移除组件文件" },
-    { progress: 88, label: "正在清理组件状态" },
-  ],
-  disable: [
-    { progress: 30, label: "正在关闭组件进程" },
-    { progress: 86, label: "正在恢复默认状态" },
-  ],
-  update: [
-    { progress: 20, label: "正在检查可用更新" },
-    { progress: 58, label: "正在完成更新" },
-    { progress: 88, label: "正在写入组件信息" },
-  ],
-  launch: [
-    { progress: 34, label: "正在检查启动入口" },
-    { progress: 82, label: "正在启动组件" },
-  ],
-};
-
 function App() {
   const { settings, updateSettings } = useAppSettings();
-  const { layoutTier } = useResponsiveLayout();
-  const toastTimerRef = useRef<number | null>(null);
-  const componentTimerRef = useRef<number | null>(null);
-
   const [activeSection, setActiveSection] = useState<SectionId>("home");
   const [snapshot, setSnapshot] = useState<SystemSnapshot | null>(null);
+  const [snapshotError, setSnapshotError] = useState("");
   const [components, setComponents] = useState<ComponentManifest[]>([]);
-  const [hotspots, setHotspots] = useState<StorageHotspot[]>([]);
-  const [thirdPartyNotices, setThirdPartyNotices] = useState<ThirdPartyNotice[]>([]);
-  const [aiRuntime, setAiRuntime] = useState<AiRuntimeStatus | null>(null);
-  const [aiPrompt, setAiPrompt] = useState("");
-  const [aiResponse, setAiResponse] = useState<AiChatResponse | null>(null);
-  const [aiBusy, setAiBusy] = useState(false);
-  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [componentError, setComponentError] = useState("");
+  const [notices, setNotices] = useState<ThirdPartyNotice[]>([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [supportModalOpen, setSupportModalOpen] = useState(false);
+  const [supportOpen, setSupportOpen] = useState(false);
+  const [managementTab, setManagementTab] =
+    useState<ManagementTab>("processes");
+  const [duplicates, setDuplicates] = useState(false);
+  const [fileNavigation, setFileNavigation] = useState(0);
+  const [history, setHistory] = useState<ToolActionResult[]>([]);
+  const [, setRunningActionId] = useState<string | null>(null);
+  const [componentBusy, setComponentBusy] = useState<Record<string, ComponentBusyState>>(
+    {},
+  );
+  const [pendingUninstall, setPendingUninstall] = useState<string | null>(null);
+  const [toast, setToast] = useState<{
+    message: string;
+    error: boolean;
+  } | null>(null);
   const [bossMode, setBossMode] = useState(false);
   const [bossStartedAt, setBossStartedAt] = useState(0);
-  const [bossState, setBossState] = useState<BossModeViewState>(getBossModeViewState(0));
-  const [lastResult, setLastResult] = useState<ToolActionResult | null>(null);
-  const [actionHistory, setActionHistory] = useState<ToolActionResult[]>([]);
-  const [runningActionId, setRunningActionId] = useState<string | null>(null);
-  const [componentBusyState, setComponentBusyState] = useState<ComponentBusyState | null>(null);
-  const [snapshotError, setSnapshotError] = useState("");
-  const [toast, setToast] = useState<ToastState>(null);
-  const [startup, setStartup] = useState<StartupState>(startupInitialState);
-
-  const activeSectionInfo = sectionCatalog[activeSection];
-  const aiAssessment = getAiAssessment(snapshot);
+  const [bossState, setBossState] = useState<BossModeViewState>(
+    getBossModeViewState(0),
+  );
+  const actionLock = useRef(false),
+    componentLock = useRef(new Set<string>()),
+    snapshotLock = useRef(false);
+  const bossTransition = useRef(false);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const capturePlus = components.find((item) => item.id === "capture-plus");
-  const qclawComponent = components.find((item) => item.id === "qclaw");
 
-  function pushToast(message: string, tone: "info" | "error" = "info") {
-    if (toastTimerRef.current) {
-      window.clearTimeout(toastTimerRef.current);
-    }
-
-    setToast({ message, tone });
-    toastTimerRef.current = window.setTimeout(() => {
-      setToast(null);
-      toastTimerRef.current = null;
-    }, 2600);
+  function pushToast(message: string, error = false) {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setToast({ message, error });
+    toastTimer.current = setTimeout(() => setToast(null), 4000);
   }
-
   function recordResult(result: ToolActionResult) {
-    setLastResult(result);
-    setActionHistory((current) => [result, ...current].slice(0, 12));
+    setHistory((current) => [result, ...current].slice(0, 20));
+    pushToast(result.summary, !result.success);
   }
-
-  function beginComponentProgress(componentId: string, operation: ComponentOperation | "launch") {
-    if (componentTimerRef.current) {
-      window.clearInterval(componentTimerRef.current);
-    }
-
-    const stages = componentStageCatalog[operation];
-    let stageIndex = 0;
-
-    setComponentBusyState({
-      componentId,
-      operation,
-      stageLabel: stages[0].label,
-      progress: stages[0].progress,
-    });
-
-    componentTimerRef.current = window.setInterval(() => {
-      stageIndex = Math.min(stageIndex + 1, stages.length - 1);
-      const stage = stages[stageIndex];
-      setComponentBusyState((current) =>
-        current?.componentId === componentId
-          ? {
-              componentId,
-              operation,
-              stageLabel: stage.label,
-              progress: stage.progress,
-            }
-          : current,
-      );
-    }, 1150);
-  }
-
-  function endComponentProgress() {
-    if (componentTimerRef.current) {
-      window.clearInterval(componentTimerRef.current);
-      componentTimerRef.current = null;
-    }
-    setComponentBusyState(null);
-  }
-
   async function loadSnapshot() {
+    if (snapshotLock.current) return;
+    snapshotLock.current = true;
     try {
+      setSnapshot(await invoke<SystemSnapshot>("get_system_snapshot"));
       setSnapshotError("");
-      const next = await invoke<SystemSnapshot>("get_system_snapshot");
-      setSnapshot(next);
     } catch (error) {
       setSnapshotError(String(error));
-    }
-  }
-
-  async function loadComponents() {
-    const next = await invoke<ComponentManifest[]>("list_components");
-    setComponents(next);
-  }
-
-  async function loadHotspots() {
-    const next = await invoke<StorageHotspot[]>("scan_storage_hotspots");
-    setHotspots(next);
-  }
-
-  async function loadAiRuntime() {
-    const next = await invoke<AiRuntimeStatus>("get_ai_runtime_status");
-    setAiRuntime(next);
-  }
-
-  async function loadThirdPartyNotices() {
-    const next = await invoke<ThirdPartyNotice[]>("get_third_party_notices");
-    setThirdPartyNotices(next);
-  }
-
-  async function refreshCore(showStartup = false) {
-    try {
-      if (showStartup) {
-        setStartup({
-          visible: true,
-          progress: 12,
-          title: "正在读取当前机器",
-          detail: "先检查 CPU、内存、显卡和系统版本，让首页状态先显示出来。",
-        });
-      }
-
-      await loadSnapshot();
-
-      if (showStartup) {
-        setStartup({
-          visible: true,
-          progress: 46,
-          title: "正在检查组件与本地 AI",
-          detail: "正在同步组件状态、Qclaw、图片查看器和本地运行时。",
-        });
-      }
-
-      await Promise.all([loadComponents(), loadAiRuntime(), loadThirdPartyNotices()]);
-
-      if (showStartup) {
-        setStartup({
-          visible: true,
-          progress: 78,
-          title: "正在扫描空间管理",
-          detail: "正在读取下载、桌面和文档区的大文件热点。",
-        });
-      }
-
-      await loadHotspots();
-
-      if (showStartup) {
-        setStartup({
-          visible: true,
-          progress: 100,
-          title: "准备完成",
-          detail: "主界面已经就绪，现在可以直接开始使用。",
-        });
-      }
     } finally {
-      if (showStartup) {
-        window.setTimeout(() => {
-          setStartup((current) => ({ ...current, visible: false }));
-        }, 280);
-      }
+      snapshotLock.current = false;
     }
   }
-
-  async function runAction(actionId: ActionId) {
+  async function loadComponents() {
     try {
-      setRunningActionId(actionId);
-      const result = await invoke<ToolActionResult>("run_tool_action", { actionId });
-      recordResult(result);
-      pushToast(result.summary, result.success ? "info" : "error");
-      await Promise.all([loadSnapshot(), loadHotspots(), loadAiRuntime(), loadComponents()]);
-      return result;
+      const items = await invoke<ComponentManifest[]>("list_components");
+      const nextNotices: ThirdPartyNotice[] = items
+        .filter((item) => item.sourceUrl && item.licenseName)
+        .map((item) => ({
+          id: item.id,
+          name: item.name,
+          version: item.version ?? "跟随安装源",
+          sourceLabel: item.sourceLabel ?? "官方",
+          sourceUrl: item.sourceUrl!,
+          licenseName: item.licenseName!,
+          licenseUrl: item.licenseUrl,
+          notes: "",
+        }));
+      setComponents(items);
+      setNotices(nextNotices);
+      setComponentError("");
+      if (!items.some((item) => item.id === "capture-plus" && item.installed)) {
+        updateSettings({ captureHelperEnabled: false });
+      }
     } catch (error) {
-      const message = String(error);
-      const result: ToolActionResult = {
+      setComponentError(String(error));
+    }
+  }
+  async function runAction(actionId: ActionId) {
+    if (actionLock.current) return;
+    actionLock.current = true;
+    setRunningActionId(actionId);
+    try {
+      recordResult(
+        await invoke<ToolActionResult>("run_tool_action", {
+          actionId,
+          captureHelperEnabled: settings.captureHelperEnabled,
+        }),
+      );
+    } catch (error) {
+      recordResult({
         actionId,
         title: "操作失败",
         success: false,
-        summary: "动作没有完成，请查看错误信息。",
-        details: message,
+        summary: String(error),
+        details: String(error),
         durationMs: 0,
         warnings: [],
-      };
-      pushToast(message, "error");
-      recordResult(result);
-      return result;
+      });
     } finally {
+      actionLock.current = false;
       setRunningActionId(null);
     }
   }
-
   async function manageComponent(
     componentId: string,
+    operation: ComponentOperation | "launch",
+  ) {
+    if (componentLock.current.has(componentId)) return false;
+    componentLock.current.add(componentId);
+    const labels = {
+      install: "正在安装",
+      repair: "正在修复",
+      uninstall: "正在卸载",
+      disable: "正在关闭",
+      update: "正在更新",
+      launch: "正在打开",
+    };
+    setComponentBusy(items => ({...items, [componentId]: {
+      componentId, operation, progress: 0, stageLabel: labels[operation],
+    }}));
+    try {
+      const result = await invoke<ToolActionResult>(
+        operation === "launch" ? "launch_component" : "manage_component",
+        { componentId, operation },
+      );
+      recordResult(result);
+      if (operation !== "launch") await loadComponents();
+      return result.success;
+    } catch (error) {
+      pushToast(String(error), true);
+      return false;
+    } finally {
+      componentLock.current.delete(componentId);
+      setComponentBusy(items => { const next = {...items}; delete next[componentId]; return next; });
+    }
+  }
+  function requestComponentOperation(
+    componentId: string,
     operation: ComponentOperation,
-  ): Promise<ToolActionResult | null> {
-    try {
-      beginComponentProgress(componentId, operation);
-      const result = await invoke<ToolActionResult>("manage_component", {
-        componentId,
-        operation,
-      });
-      recordResult(result);
-      pushToast(result.summary, result.success ? "info" : "error");
-      await Promise.all([loadComponents(), loadAiRuntime(), loadThirdPartyNotices()]);
-      return result;
-    } catch (error) {
-      pushToast(String(error), "error");
-      return null;
-    } finally {
-      endComponentProgress();
-    }
+  ) {
+    if (operation === "uninstall") setPendingUninstall(componentId);
+    else void manageComponent(componentId, operation);
   }
-
-  async function launchComponent(componentId: string): Promise<ToolActionResult | null> {
-    try {
-      beginComponentProgress(componentId, "launch");
-      const result = await invoke<ToolActionResult>("launch_component", { componentId });
-      recordResult(result);
-      pushToast(result.summary, result.success ? "info" : "error");
-      return result;
-    } catch (error) {
-      pushToast(String(error), "error");
-      return null;
-    } finally {
-      endComponentProgress();
-    }
+  async function toggleCaptureHelper(enabled: boolean) {
+    if (enabled) {
+      if (
+        !capturePlus?.installed &&
+        !(await manageComponent("capture-plus", "install"))
+      )
+        return;
+      if (await manageComponent("capture-plus", "launch"))
+        updateSettings({ captureHelperEnabled: true });
+    } else if (await manageComponent("capture-plus", "disable"))
+      updateSettings({ captureHelperEnabled: false });
   }
-
   async function openTarget(target: string) {
     try {
       const result = await invoke<ToolActionResult>("open_target", { target });
-      pushToast(result.summary);
+      if (!result.success) pushToast(result.summary, true);
     } catch (error) {
-      pushToast(String(error), "error");
+      pushToast(String(error), true);
     }
   }
-
-  async function handleQuickAction(actionId: string) {
-    if (actionId === "open_storage") {
+  function quickAction(id: string) {
+    if (id === "open_cleaning") setActiveSection("cleaning");
+    else if (id === "open_storage" || id === "open_duplicates") {
+      setDuplicates(id === "open_duplicates");
+      setFileNavigation((value) => value + 1);
       setActiveSection("efficiency");
-      pushToast("已切换到空间管理。");
-      return;
-    }
-
-    await runAction(actionId as ActionId);
+    } else if (id === "open_health") setActiveSection("health");
+    else if (id === "open_network") setActiveSection("network");
+    else if (
+      [
+        "open_startup",
+        "open_processes",
+        "open_uninstall",
+        "open_popups",
+      ].includes(id)
+    ) {
+      setManagementTab(
+        (
+          {
+            open_startup: "startup",
+            open_processes: "processes",
+            open_uninstall: "uninstall",
+            open_popups: "popups",
+          } as Record<string, ManagementTab>
+        )[id],
+      );
+      setActiveSection("applications");
+    } else if (id === "open_system") setActiveSection("system");
+    else if (id === "open_devices" || id === "open_reliability") {
+      void invoke("open_health_tool", {tool: id}).catch(error => pushToast(String(error), true));
+    } else if (id.startsWith("ms-settings:") || id.startsWith("windowsdefender:") || /^[A-Za-z]:[\\/]/.test(id)) void openTarget(id);
+    else void runAction(id as ActionId);
   }
-
-  async function toggleCaptureHelper(nextEnabled: boolean) {
-    if (nextEnabled) {
-      if (!capturePlus?.installed) {
-        const installResult = await manageComponent("capture-plus", "install");
-        if (!installResult?.success) {
-          return;
-        }
-      }
-
-      updateSettings({ captureHelperEnabled: true });
-      await launchComponent("capture-plus");
-      pushToast("截图增强已开启。按 F1 截图，按 F3 贴图。");
-      return;
-    }
-
-    await manageComponent("capture-plus", "disable");
-    updateSettings({ captureHelperEnabled: false });
-    pushToast("截图增强已关闭，已恢复系统默认截图。");
-  }
-
-  async function askLocalAi() {
-    if (!aiPrompt.trim()) {
-      pushToast("先输入一句话，再交给本地 AI。", "error");
-      return;
-    }
-
+  async function toggleBossMode(enabled: boolean) {
+    if (bossTransition.current) return;
+    bossTransition.current = true;
     try {
-      setAiBusy(true);
-      const response = await invoke<AiChatResponse>("ask_local_ai", {
-        prompt: aiPrompt,
-        model: null,
-      });
-      setAiResponse(response);
-      pushToast("本地 AI 已返回结果。");
+      if (enabled) {
+        setBossMode(true);
+        setBossStartedAt(Date.now());
+        setBossState(getBossModeViewState(0));
+        await getCurrentWindow().setDecorations(false);
+        await getCurrentWindow().setFullscreen(true);
+        await getCurrentWindow().setAlwaysOnTop(true);
+        await getCurrentWindow().setFocus();
+      } else {
+        await getCurrentWindow().setAlwaysOnTop(false);
+        await getCurrentWindow().setFullscreen(false);
+        await getCurrentWindow().setDecorations(true);
+        setBossMode(false);
+      }
     } catch (error) {
-      pushToast(String(error), "error");
+      await Promise.allSettled([
+        getCurrentWindow().setAlwaysOnTop(false),
+        getCurrentWindow().setFullscreen(false),
+        getCurrentWindow().setDecorations(true),
+      ]);
+      setBossMode(false);
+      pushToast(String(error), true);
     } finally {
-      setAiBusy(false);
+      bossTransition.current = false;
     }
   }
-
-  async function enterBossMode() {
-    const appWindow = getCurrentWindow();
-    setBossStartedAt(Date.now());
-    setBossState(getBossModeViewState(0));
-    setBossMode(true);
-    setPaletteOpen(false);
-
-    await appWindow.setDecorations(false);
-    await appWindow.setResizable(false);
-    await appWindow.setAlwaysOnTop(true);
-    await appWindow.setFullscreen(true);
-    await appWindow.setCursorVisible(false);
-    await appWindow.setContentProtected(true);
-
-    pushToast(`已进入老板键，按 ${bossModeShortcut} 或 Esc 退出。`);
-  }
-
-  async function exitBossMode() {
-    const appWindow = getCurrentWindow();
-    setBossMode(false);
-
-    await appWindow.setFullscreen(false);
-    await appWindow.setAlwaysOnTop(false);
-    await appWindow.setDecorations(true);
-    await appWindow.setResizable(true);
-    await appWindow.setCursorVisible(true);
-    await appWindow.setContentProtected(false);
-  }
-
   useEffect(() => {
-    void refreshCore(true);
-
+    if (isTauri()) {
+      void loadComponents();
+    }
     return () => {
-      if (toastTimerRef.current) {
-        window.clearTimeout(toastTimerRef.current);
-      }
-
-      if (componentTimerRef.current) {
-        window.clearInterval(componentTimerRef.current);
-      }
+      if (toastTimer.current) clearTimeout(toastTimer.current);
     };
   }, []);
-
   useEffect(() => {
-    const timer = window.setInterval(() => {
-      if (!document.hidden && !bossMode && !startup.visible) {
-        void loadSnapshot();
+    let cancelled = false,
+      checking = false;
+    async function inspect() {
+      if (!isTauri() || checking) return;
+      checking = true;
+      try {
+        const rows = await invoke<
+          Array<{ id: string; available: boolean; version: string | null }>
+        >("check_component_updates");
+        if (!cancelled)
+          setComponents((items) =>
+            items.map((item) => {
+              const row = rows.find((row) => row.id === item.id);
+              return row
+                ? {
+                    ...item,
+                    updateAvailable: row.available,
+                    availableVersion: row.version,
+                  }
+                : item;
+            }),
+          );
+      } catch {
+        /* A failed background check must not mark packages current. */
+      } finally {
+        checking = false;
       }
-    }, 60_000);
-
-    return () => window.clearInterval(timer);
-  }, [bossMode, startup.visible]);
-
-  useEffect(() => {
-    if (settings.captureHelperEnabled && !capturePlus?.installed) {
-      updateSettings({ captureHelperEnabled: false });
     }
-  }, [capturePlus?.installed, settings.captureHelperEnabled, updateSettings]);
-
+    const first = setTimeout(() => void inspect(), 30000);
+    const timer = setInterval(() => void inspect(), 6 * 60 * 60 * 1000);
+    return () => {
+      cancelled = true;
+      clearTimeout(first);
+      clearInterval(timer);
+    };
+  }, []);
+  useEffect(() => {
+    if (activeSection === "settings" && isTauri()) void loadSnapshot();
+  }, [activeSection]);
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (
+        isTauri() &&
+        activeSection === "settings" &&
+        !document.hidden &&
+        !bossMode
+      )
+        void loadSnapshot();
+    }, 60_000);
+    return () => clearInterval(timer);
+  }, [bossMode, activeSection]);
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.ctrlKey && event.altKey && event.key.toLowerCase() === "b") {
+      if (
+        (event.ctrlKey && event.altKey && event.key.toLowerCase() === "b") ||
+        (bossMode && event.key === "Escape")
+      ) {
         event.preventDefault();
-        if (bossMode) {
-          void exitBossMode();
-        } else {
-          void enterBossMode();
-        }
-        return;
-      }
-
-      if (bossMode) {
-        if (event.key === "Escape") {
-          event.preventDefault();
-          void exitBossMode();
-          return;
-        }
-
-        if (["Meta", "ContextMenu"].includes(event.key)) {
-          event.preventDefault();
-        }
-        return;
-      }
-
-      if (event.altKey && event.code === "Space" && aiRuntime?.paletteReady) {
-        event.preventDefault();
-        setPaletteOpen((current) => !current);
+        void toggleBossMode(!bossMode);
       }
     };
-
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [aiRuntime, bossMode]);
-
+  }, [bossMode]);
   useEffect(() => {
-    if (!bossMode) {
-      return;
-    }
-
-    const timer = window.setInterval(() => {
-      setBossState(getBossModeViewState(Date.now() - bossStartedAt));
-    }, 250);
-
-    return () => window.clearInterval(timer);
+    if (!bossMode) return;
+    const timer = setInterval(
+      () => setBossState(getBossModeViewState(Date.now() - bossStartedAt)),
+      250,
+    );
+    return () => clearInterval(timer);
   }, [bossMode, bossStartedAt]);
-
   function renderPage() {
     switch (activeSection) {
       case "home":
+        return null;
+      case "cleaning":
+        return null;
+      case "health":
+        return <HealthPage onNavigate={quickAction} />;
+      case "network":
         return (
-          <HomePage
-            snapshot={snapshot}
-            quickActions={homeQuickActions}
-            runningActionId={runningActionId}
-            hotspots={hotspots}
-            lastResult={lastResult}
-            qclawInstalled={Boolean(qclawComponent?.installed)}
-            onQuickAction={(actionId) => {
-              void handleQuickAction(actionId);
+          <NetworkPage onOpenTarget={(target) => void openTarget(target)} />
+        );
+      case "applications":
+        return (
+          <ManagementPage
+            initialTab={managementTab}
+            components={components}
+            componentBusy={Boolean(componentBusy["uninstall-plus"])}
+            onComponent={(id, installed) => {
+              void (async () => {
+                if (installed || (await manageComponent(id, "install")))
+                  await manageComponent(id, "launch");
+              })();
             }}
+            onOpenTarget={(target) => void openTarget(target)}
           />
         );
       case "system":
         return (
-          <SystemPage
-            tools={systemTools}
-            runningActionId={runningActionId}
-            onRunAction={(actionId) => {
-              void runAction(actionId);
-            }}
-          />
+          <SystemPage onOpenTarget={(target) => void openTarget(target)} />
         );
       case "components":
         return (
           <ComponentsPage
             components={components}
-            busyState={componentBusyState}
+            busyState={componentBusy}
             captureHelperEnabled={settings.captureHelperEnabled}
-            onToggleCaptureHelper={(nextEnabled) => {
-              void toggleCaptureHelper(nextEnabled);
-            }}
-            onManageComponent={(componentId, operation) => {
-              void manageComponent(componentId, operation);
-            }}
-            onLaunchComponent={(componentId) => {
-              void launchComponent(componentId);
-            }}
-            onOpenTarget={(target) => {
-              void openTarget(target);
-            }}
+            onToggleCaptureHelper={(enabled) =>
+              void toggleCaptureHelper(enabled)
+            }
+            onManageComponent={requestComponentOperation}
+            onLaunchComponent={(id) => void manageComponent(id, "launch")}
+            onOpenTarget={(target) => void openTarget(target)}
           />
         );
       case "efficiency":
-        return (
-          <EfficiencyPage
-            hotspots={hotspots}
-            onRefreshHotspots={() => {
-              void loadHotspots();
-            }}
-            onOpenTarget={(target) => {
-              void openTarget(target);
-            }}
-          />
-        );
-      case "ai":
-        return (
-          <AiPage
-            assessment={aiAssessment}
-            runtime={aiRuntime}
-            response={aiResponse}
-            busyState={componentBusyState}
-            onOpenPalette={() => setPaletteOpen(true)}
-            onManageComponent={(componentId, operation) => {
-              void manageComponent(componentId, operation);
-            }}
-            onLaunchComponent={(componentId) => {
-              void launchComponent(componentId);
-            }}
-            components={components}
-          />
-        );
+        return null;
       case "settings":
         return (
           <SettingsPage
-            settings={settings}
+            snapshot={snapshot}
+            onOpenDeviceInfo={() => setDrawerOpen(true)}
             components={components}
-            notices={thirdPartyNotices}
-            busyState={componentBusyState}
-            onUpdateSettings={updateSettings}
-            onEnterBossMode={() => {
-              void enterBossMode();
-            }}
-            onManageComponent={(componentId, operation) => {
-              void manageComponent(componentId, operation);
-            }}
-            onLaunchComponent={(componentId) => {
-              void launchComponent(componentId);
-            }}
-            onOpenTarget={(target) => {
-              void openTarget(target);
-            }}
-            onOpenSupportModal={() => setSupportModalOpen(true)}
+            notices={notices}
+            busyState={componentBusy}
+            onEnterBossMode={() => void toggleBossMode(true)}
+            onManageComponent={requestComponentOperation}
+            onLaunchComponent={(id) => void manageComponent(id, "launch")}
+            onOpenTarget={(target) => void openTarget(target)}
+            onOpenSupportModal={() => setSupportOpen(true)}
           />
         );
-      default:
-        return null;
     }
   }
-
   return (
     <>
-      <div
-        className="app-shell"
-        data-tier={layoutTier}
-        data-density={settings.density}
-        data-scale={settings.scale}
-        data-font={settings.fontPreset}
-      >
-        <div className="app-shell__glow app-shell__glow--left" />
-        <div className="app-shell__glow app-shell__glow--right" />
-
+      <div className="app-shell">
         <aside className="sidebar">
           <div className="sidebar__brand">
-            <img src="/app-mark.svg" alt="" className="sidebar__logo-image" />
-            <div className="sidebar__brand-copy">
-              <p className="sidebar__eyebrow">WIN TOOLBOX</p>
-              <h1>Win Toolbox</h1>
-              <p className="sidebar__product-label">效率控制台</p>
+            <img src="/brand-icon.png" alt="" className="sidebar__logo-image" />
+            <div>
+              <h1>WinEase</h1>
+              <p className="sidebar__product-label">Windows 工具箱</p>
             </div>
           </div>
-
-          <p className="sidebar__summary">
-            高频动作留在首页，安装增强工具放到组件中心，空间热点单独做成可视化页面。
-          </p>
-
-          <nav className="sidebar__nav">
+          <nav className="sidebar__nav" aria-label="主导航">
             {sections.map((section) => (
               <button
                 key={section.id}
-                className={`sidebar__nav-item ${
-                  section.id === activeSection ? "sidebar__nav-item--active" : ""
-                }`}
                 type="button"
+                aria-current={activeSection === section.id ? "page" : undefined}
+                className={`sidebar__nav-item ${activeSection === section.id ? "sidebar__nav-item--active" : ""}`}
                 onClick={() => setActiveSection(section.id)}
               >
                 <strong>{section.label}</strong>
-                <span>{section.hint}</span>
               </button>
             ))}
           </nav>
-
-          <section className="sidebar__panel">
-            <p className="section-kicker">当前机器</p>
-            <h2>{snapshot ? snapshot.hostName : "正在读取设备状态"}</h2>
-            <p>{snapshot ? `${snapshot.osName} · ${snapshot.osBuild}` : "稍后会自动刷新。"}</p>
-            <button className="ghost-button" type="button" onClick={() => setDrawerOpen(true)}>
-              查看状态与记录
-            </button>
-          </section>
-
-          <section className="sidebar__panel sidebar__panel--support">
-            <p className="section-kicker">支持一下</p>
-            <p>赞助入口已经恢复为弹窗显示，点击就能直接看到收款码。</p>
-            <button
-              className="ghost-button"
-              type="button"
-              onClick={() => setSupportModalOpen(true)}
-            >
-              打开赞助码
-            </button>
-          </section>
         </aside>
-
         <main className="main-panel">
           <header className="main-toolbar">
-            <div>
-              <p className="section-kicker">{activeSectionInfo.eyebrow}</p>
-              <h2>{activeSectionInfo.title}</h2>
-            </div>
-
+            <h2>
+              {sections.find((item) => item.id === activeSection)?.label ??
+                (activeSection === "health" ? "电脑体检" : "网络修复")}
+            </h2>
             <div className="main-toolbar__actions">
-              <span className="toolbar-pill">
-                {snapshot
-                  ? `${snapshot.cpuName} · ${snapshot.memoryUsagePercent}% 内存占用`
-                  : "正在读取快照"}
-              </span>
-              <button className="ghost-button" type="button" onClick={() => setDrawerOpen(true)}>
-                机器与记录
-              </button>
+              {(activeSection === "health" || activeSection === "network") && (
+                <button
+                  className="ghost-button"
+                  onClick={() => setActiveSection("home")}
+                >
+                  返回首页
+                </button>
+              )}
             </div>
           </header>
-
-          {snapshotError ? (
-            <section className="banner banner--warning">
-              <strong>读取系统快照失败</strong>
-              <span>{snapshotError}</span>
-            </section>
-          ) : null}
-
-          <div className="page-frame">{renderPage()}</div>
-        </main>
-      </div>
-
-      {startup.visible ? (
-        <div className="startup-overlay">
-          <div className="startup-overlay__panel">
-            <p className="section-kicker">Starting Up</p>
-            <h2>{startup.title}</h2>
-            <p>{startup.detail}</p>
-            <div className="startup-overlay__progress-head">
-              <span>正在加载配置与组件状态</span>
-              <strong>{startup.progress}%</strong>
+          <div className="page-frame">
+            {snapshotError && activeSection === "settings" && (
+              <div className="banner banner--warning" role="alert">
+                系统信息读取失败：{snapshotError}
+              </div>
+            )}
+            {componentError &&
+              (activeSection === "components" ||
+                activeSection === "settings") && (
+                <div className="banner banner--warning" role="alert">
+                  <span>组件读取失败：{componentError}</span>
+                  <button
+                    className="ghost-button"
+                    onClick={() => void loadComponents()}
+                  >
+                    重试
+                  </button>
+                </div>
+              )}
+            {renderPage()}
+            <div hidden={activeSection !== "home"}>
+              <HomePage onQuickAction={quickAction} />
             </div>
-            <div className="startup-progress">
-              <span style={{ width: `${startup.progress}%` }} />
+            <div hidden={activeSection !== "cleaning"}>
+              <CleaningPage active={activeSection === "cleaning"} onResult={recordResult} />
+            </div>
+            <div hidden={activeSection !== "efficiency"}>
+              <FilesPage
+                navigationRequest={fileNavigation}
+                initialDuplicates={duplicates}
+                onOpenTarget={(target) => void openTarget(target)}
+              />
             </div>
           </div>
-        </div>
-      ) : null}
-
+        </main>
+      </div>
       <InfoDrawer
         open={drawerOpen}
         snapshot={snapshot}
-        history={actionHistory}
+        history={history}
         onClose={() => setDrawerOpen(false)}
-        onOpenTarget={(target) => {
-          void openTarget(target);
+        onOpenTarget={(target) => void openTarget(target)}
+      />
+      <AppUpdater />
+      <SupportModal open={supportOpen} onClose={() => setSupportOpen(false)} />
+      <ConfirmDialog
+        open={pendingUninstall !== null}
+        title={`卸载 ${components.find((item) => item.id === pendingUninstall)?.name ?? "组件"}？`}
+        description="将调用组件卸载程序。"
+        confirmLabel="卸载"
+        onCancel={() => setPendingUninstall(null)}
+        onConfirm={() => {
+          const id = pendingUninstall;
+          setPendingUninstall(null);
+          if (id) void manageComponent(id, "uninstall");
         }}
       />
-
-      <SupportModal open={supportModalOpen} onClose={() => setSupportModalOpen(false)} />
-
-      <AiPalette
-        open={paletteOpen}
-        runtime={aiRuntime}
-        prompt={aiPrompt}
-        busy={aiBusy}
-        response={aiResponse}
-        onPromptChange={setAiPrompt}
-        onClose={() => setPaletteOpen(false)}
-        onSubmit={() => {
-          void askLocalAi();
-        }}
-      />
-
-      {bossMode ? (
-        <BossModeOverlay
-          state={bossState}
-          exitHint={`按 ${bossModeShortcut} 或 Esc 退出演示模式`}
-        />
-      ) : null}
-
-      {toast ? <div className={`toast toast--${toast.tone}`}>{toast.message}</div> : null}
+      {bossMode && <BossModeOverlay state={bossState} />}
+      {toast && !bossMode && (
+        <div
+          role="status"
+          className={`toast toast--${toast.error ? "error" : "info"}`}
+        >
+          {toast.message}
+        </div>
+      )}
     </>
   );
 }
-
 export default App;

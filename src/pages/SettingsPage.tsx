@@ -1,301 +1,314 @@
+import { useRef, useState } from "react";
 import { bossModeShortcut } from "../content";
+import { version } from "../../package.json";
+import { getComponentIconPath } from "../componentIcons";
+import * as Dialog from "@radix-ui/react-dialog";
+import fontLicense from "../assets/harmonyos-license.txt?raw";
 import type {
-  AppSettings,
   ComponentBusyState,
   ComponentManifest,
   ComponentOperation,
   ThirdPartyNotice,
+  SystemSnapshot,
 } from "../types";
 
-type SettingsPageProps = {
-  settings: AppSettings;
+type Props = {
+  snapshot: SystemSnapshot | null;
+  onOpenDeviceInfo: () => void;
   components: ComponentManifest[];
   notices: ThirdPartyNotice[];
-  busyState: ComponentBusyState | null;
-  onUpdateSettings: (patch: Partial<AppSettings>) => void;
+  busyState: Record<string, ComponentBusyState>;
   onEnterBossMode: () => void;
-  onManageComponent: (componentId: string, operation: ComponentOperation) => void;
-  onLaunchComponent: (componentId: string) => void;
+  onManageComponent: (id: string, operation: ComponentOperation) => void;
+  onLaunchComponent: (id: string) => void;
   onOpenTarget: (target: string) => void;
   onOpenSupportModal: () => void;
 };
-
 export function SettingsPage({
-  settings,
+  snapshot,
+  onOpenDeviceInfo,
   components,
   notices,
   busyState,
-  onUpdateSettings,
   onEnterBossMode,
   onManageComponent,
   onLaunchComponent,
   onOpenTarget,
   onOpenSupportModal,
-}: SettingsPageProps) {
-  const installedComponents = components.filter((item) => item.installed && item.kind !== "built-in");
-
+}: Props) {
+  const [section, setSection] = useState("general");
+  const [fontLicenseOpen, setFontLicenseOpen] = useState(false);
+  const licenseOrigin = useRef<HTMLElement | null>(null);
+  const installed = components.filter(
+    (item) => item.installed && item.kind !== "built-in",
+  );
+  const allNotices: ThirdPartyNotice[] = [
+    {
+      id: "harmonyos-sans",
+      name: "HarmonyOS Sans SC",
+      version: "内置",
+      sourceLabel: "华为",
+      sourceUrl: "https://developer.huawei.com/consumer/cn/design/resource/",
+      licenseName: "HarmonyOS Sans 字体许可",
+      notes: "",
+    },
+    ...notices,
+  ];
   return (
     <div className="page-stack">
-      <section className="surface">
-        <div className="section-head">
-          <div>
-            <p className="section-kicker">Settings</p>
-            <h2>外观与偏好</h2>
-          </div>
-          <p className="section-copy">字体、密度、截图保存目录和开机启动都在这里。</p>
-        </div>
-
-        <div className="settings-grid">
-          <label className="setting-row soft-card">
-            <span>字体</span>
-            <select
-              value={settings.fontPreset}
-              onChange={(event) =>
-                onUpdateSettings({ fontPreset: event.target.value as AppSettings["fontPreset"] })
-              }
-            >
-              <option value="harmony">鸿蒙优先</option>
-              <option value="system">系统字体</option>
-            </select>
-          </label>
-
-          <label className="setting-row soft-card">
-            <span>界面密度</span>
-            <select
-              value={settings.density}
-              onChange={(event) =>
-                onUpdateSettings({ density: event.target.value as AppSettings["density"] })
-              }
-            >
-              <option value="auto">自动</option>
-              <option value="compact">紧凑</option>
-              <option value="standard">标准</option>
-              <option value="comfortable">舒展</option>
-            </select>
-          </label>
-
-          <label className="setting-row soft-card">
-            <span>界面缩放</span>
-            <select
-              value={settings.scale}
-              onChange={(event) =>
-                onUpdateSettings({ scale: event.target.value as AppSettings["scale"] })
-              }
-            >
-              <option value="auto">自动</option>
-              <option value="compact">紧凑</option>
-              <option value="standard">标准</option>
-              <option value="relaxed">舒展</option>
-            </select>
-          </label>
-
-          <label className="setting-row soft-card setting-row--toggle">
-            <span>截图优先复制</span>
-            <input
-              type="checkbox"
-              checked={settings.saveToClipboardFirst}
-              onChange={(event) => onUpdateSettings({ saveToClipboardFirst: event.target.checked })}
-            />
-          </label>
-
-          <label className="setting-row soft-card setting-row--toggle">
-            <span>开机启动</span>
-            <input
-              type="checkbox"
-              checked={settings.startOnBoot}
-              onChange={(event) => onUpdateSettings({ startOnBoot: event.target.checked })}
-            />
-          </label>
-
-          <label className="setting-row soft-card setting-row--full">
-            <span>截图保存目录</span>
-            <input
-              type="text"
-              value={settings.screenshotFolder}
-              onChange={(event) => onUpdateSettings({ screenshotFolder: event.target.value })}
-            />
-          </label>
-        </div>
-      </section>
-
-      <section className="surface">
-        <div className="section-head">
-          <div>
-            <p className="section-kicker">Components</p>
-            <h2>已安装组件</h2>
-          </div>
-          <p className="section-copy">组件装好以后，打开、修复、日志和数据目录都在这里。</p>
-        </div>
-
-        {installedComponents.length === 0 ? (
-          <div className="empty-state">还没有检测到已安装组件，去组件中心点一下就能开始安装。</div>
-        ) : (
-          <div className="settings-installed-grid">
-            {installedComponents.map((item) => (
-              <article key={item.id} className="soft-card installed-component-card">
-                <div className="history-item__top">
-                  <div>
-                    <h3>{item.name}</h3>
-                    <small>{item.version ? `版本 ${item.version}` : item.category}</small>
-                  </div>
-                  <span className="pill pill--success">{item.statusLabel}</span>
-                </div>
-
-                <p>{item.summary}</p>
-
-                {busyState?.componentId === item.id ? (
-                  <div className="component-progress">
-                    <div className="component-progress__head">
-                      <span>{busyState.stageLabel}</span>
-                      <strong>{busyState.progress}%</strong>
-                    </div>
-                    <div className="component-progress__bar">
-                      <span style={{ width: `${busyState.progress}%` }} />
-                    </div>
-                  </div>
-                ) : null}
-
-                <div className="button-row">
-                  <button
-                    className="secondary-button"
-                    type="button"
-                    disabled={busyState?.componentId === item.id}
-                    onClick={() => onLaunchComponent(item.id)}
-                  >
-                    打开
-                  </button>
-
-                  {item.supportsRepair ? (
-                    <button
-                      className="ghost-button"
-                      type="button"
-                      disabled={busyState?.componentId === item.id}
-                      onClick={() => onManageComponent(item.id, "repair")}
-                    >
-                      修复
-                    </button>
-                  ) : null}
-
-                  {item.supportsUninstall ? (
-                    <button
-                      className="ghost-button"
-                      type="button"
-                      disabled={busyState?.componentId === item.id}
-                      onClick={() => onManageComponent(item.id, "uninstall")}
-                    >
-                      卸载
-                    </button>
-                  ) : null}
-                </div>
-
-                <div className="component-card__links">
-                  {item.installDir ? (
-                    <button
-                      className="component-card__link"
-                      type="button"
-                      onClick={() => onOpenTarget(item.installDir!)}
-                    >
-                      数据目录
-                    </button>
-                  ) : null}
-                  {item.logDir ? (
-                    <button
-                      className="component-card__link"
-                      type="button"
-                      onClick={() => onOpenTarget(item.logDir!)}
-                    >
-                      日志目录
-                    </button>
-                  ) : null}
-                  {item.homepage ? (
-                    <button
-                      className="component-card__link"
-                      type="button"
-                      onClick={() => onOpenTarget(item.homepage!)}
-                    >
-                      官方主页
-                    </button>
-                  ) : null}
-                </div>
-              </article>
-            ))}
-          </div>
-        )}
-      </section>
-
-      <section className="surface">
-        <div className="section-head">
-          <div>
-            <p className="section-kicker">Third Party</p>
-            <h2>第三方组件说明</h2>
-          </div>
-          <p className="section-copy">版本、来源和许可证都在这里，方便直接核对。</p>
-        </div>
-
-        <div className="notice-grid">
-          {notices.map((notice) => (
-            <article key={notice.id} className="soft-card notice-card">
-              <div className="history-item__top">
-                <div>
-                  <h3>{notice.name}</h3>
-                  <small>{notice.version}</small>
-                </div>
-                <span className="pill pill--muted">{notice.licenseName}</span>
-              </div>
-              <p>{notice.notes}</p>
-              <div className="component-card__links">
-                <button
-                  className="component-card__link"
-                  type="button"
-                  onClick={() => onOpenTarget(notice.sourceUrl)}
-                >
-                  来源
-                </button>
-                {notice.licenseUrl ? (
-                  <button
-                    className="component-card__link"
-                    type="button"
-                    onClick={() => onOpenTarget(notice.licenseUrl!)}
-                  >
-                    许可证
-                  </button>
-                ) : null}
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className="surface">
-        <div className="section-head">
-          <div>
-            <p className="section-kicker">Boss Mode & Support</p>
-            <h2>老板键与赞助</h2>
-          </div>
-        </div>
-
-        <div className="split-grid split-grid--support">
-          <article className="soft-card feature-card">
-            <h3>老板键</h3>
-            <p>快捷键是 {bossModeShortcut}。进入后按同样的快捷键，或按 Esc 就能退出。</p>
-            <small>进入演示模式后，底部也会一直显示退出提示，不会再出现进去了退不出来。</small>
-            <button className="ghost-button" type="button" onClick={onEnterBossMode}>
-              立即进入
-            </button>
-          </article>
-
-          <article className="soft-card support-card">
-            <div>
-              <h3>赞助支持</h3>
-              <p>如果这个工具对你有帮助，欢迎扫码支持继续打磨。</p>
-              <button className="ghost-button" type="button" onClick={onOpenSupportModal}>
-                弹出赞助码
+      <nav className="subnav" aria-label="设置分类">
+        {[
+          { id: "general", label: "通用" },
+          { id: "components", label: "组件" },
+          { id: "about", label: "关于" },
+        ].map((item) => (
+          <button
+            type="button"
+            key={item.id}
+            aria-pressed={section === item.id}
+            onClick={() => setSection(item.id)}
+          >
+            {item.label}
+          </button>
+        ))}
+      </nav>
+      {section === "general" && (
+        <>
+          <section className="surface">
+            <div className="section-head">
+              <h2>设备信息</h2>
+              <button className="ghost-button" onClick={onOpenDeviceInfo}>
+                详情与日志
               </button>
             </div>
-            <img src="/donate-qr.png" alt="赞助收款码" className="support-card__qr" />
-          </article>
-        </div>
-      </section>
+            <div className="setting-line">
+              <span>系统</span>
+              <strong className="single-line" title={snapshot?.osName}>
+                {snapshot?.osName.replace(/^Microsoft\s+/i, "") ?? "读取中"}
+              </strong>
+            </div>
+            <div className="setting-line">
+              <span>设备</span>
+              <strong className="single-line">
+                {snapshot?.hostName ?? "—"}
+              </strong>
+            </div>
+          </section>
+          <section className="surface">
+            <div className="section-head">
+              <h2>快捷键</h2>
+            </div>
+            <div className="setting-line">
+              <div>
+                <strong>老板键</strong>
+                <p className="scope-note">{bossModeShortcut} · Esc 退出</p>
+              </div>
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={onEnterBossMode}
+              >
+                进入
+              </button>
+            </div>
+          </section>
+        </>
+      )}
+      {section === "components" && (
+        <>
+          <section className="surface">
+            <div className="section-head">
+              <h2>已安装组件</h2>
+            </div>
+            {installed.length === 0 ? (
+              <div className="empty-state">暂无已安装组件</div>
+            ) : (
+              <div className="settings-installed-grid">
+                {installed.map((item) => (
+                  <article
+                    key={item.id}
+                    className="soft-card installed-component-card"
+                  >
+                    <div className="history-item__top">
+                      <div className="settings-component-name">
+                        {getComponentIconPath(item.id) && (
+                          <img src={getComponentIconPath(item.id)!} alt="" />
+                        )}
+                        <h3>{item.name}</h3>
+                      </div>
+                      <span className="pill pill--success">
+                        {item.statusLabel}
+                      </span>
+                    </div>
+                    {Boolean(busyState[item.id]) && (
+                      <p role="status">{busyState[item.id]?.stageLabel}…</p>
+                    )}
+                    <div className="button-row">
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        disabled={Boolean(busyState[item.id])}
+                        onClick={() => onLaunchComponent(item.id)}
+                      >
+                        打开
+                      </button>
+                      {item.supportsRepair && (
+                        <button
+                          className="ghost-button"
+                          type="button"
+                          disabled={Boolean(busyState[item.id])}
+                          onClick={() => onManageComponent(item.id, "repair")}
+                        >
+                          修复
+                        </button>
+                      )}
+                      {item.supportsUninstall && (
+                        <button
+                          className="ghost-button"
+                          type="button"
+                          disabled={Boolean(busyState[item.id])}
+                          onClick={() =>
+                            onManageComponent(item.id, "uninstall")
+                          }
+                        >
+                          卸载
+                        </button>
+                      )}
+                      {item.logDir && (
+                        <button
+                          className="ghost-button"
+                          type="button"
+                          onClick={() => onOpenTarget(item.logDir!)}
+                        >
+                          日志
+                        </button>
+                      )}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
+          <section className="surface">
+            <div className="section-head">
+              <h2>第三方许可证</h2>
+            </div>
+            <div className="notice-grid">
+              {allNotices.map((notice) => (
+                <article className="soft-card notice-card" key={notice.id}>
+                  <div className="history-item__top">
+                    <div className="settings-component-name">
+                      {getComponentIconPath(notice.id) && (
+                        <img src={getComponentIconPath(notice.id)!} alt="" />
+                      )}
+                      <h3>{notice.name}</h3>
+                    </div>
+                    <small>{notice.licenseName}</small>
+                  </div>
+                  <div className="button-row">
+                    <button
+                      className="ghost-button"
+                      onClick={() => onOpenTarget(notice.sourceUrl)}
+                    >
+                      来源
+                    </button>
+                    {(notice.licenseUrl || notice.id === "harmonyos-sans") && (
+                      <button
+                        className="ghost-button"
+                        onClick={() =>
+                          notice.id === "harmonyos-sans"
+                            ? setFontLicenseOpen(true)
+                            : onOpenTarget(notice.licenseUrl!)
+                        }
+                      >
+                        许可证
+                      </button>
+                    )}
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+        </>
+      )}
+      {section === "about" && (
+        <section className="surface about-panel">
+          <img src="/brand-icon.png" alt="" width="64" height="64" />
+          <h2>WinEase</h2>
+          <p className="scope-note">Windows 工具箱 · {version}</p>
+          <button
+            className="secondary-button"
+            onClick={() =>
+              window.dispatchEvent(new Event("winease-check-update"))
+            }
+          >
+            检查更新
+          </button>
+          <p className="scope-note">界面使用 HarmonyOS Sans SC 鸿蒙字体</p>
+          <div className="about-links">
+            <button
+              className="setting-line"
+              type="button"
+              onClick={() => onOpenTarget("https://github.com/soberbw-hash")}
+            >
+              <span>我的主页</span>
+              <span aria-hidden="true">↗</span>
+            </button>
+            <button
+              className="setting-line"
+              type="button"
+              onClick={() =>
+                onOpenTarget("https://github.com/soberbw-hash/WinEase")
+              }
+            >
+              <span>项目仓库</span>
+              <span aria-hidden="true">↗</span>
+            </button>
+            <button
+              className="setting-line"
+              type="button"
+              onClick={() =>
+                onOpenTarget("https://github.com/soberbw-hash/WinEase/issues")
+              }
+            >
+              <span>反馈问题</span>
+              <span aria-hidden="true">↗</span>
+            </button>
+            <button
+              className="setting-line"
+              type="button"
+              onClick={onOpenSupportModal}
+            >
+              <span>赞助</span>
+              <span aria-hidden="true">→</span>
+            </button>
+          </div>
+        </section>
+      )}
+      <Dialog.Root open={fontLicenseOpen} onOpenChange={setFontLicenseOpen}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="dialog-overlay" />
+          <Dialog.Content
+            className="font-license-dialog"
+            onOpenAutoFocus={() => {
+              licenseOrigin.current = document.activeElement as HTMLElement;
+            }}
+            onCloseAutoFocus={(event) => {
+              event.preventDefault();
+              licenseOrigin.current?.focus();
+            }}
+          >
+            <Dialog.Title>鸿蒙字体许可证</Dialog.Title>
+            <Dialog.Description className="scope-note">
+              HarmonyOS Sans SC · Huawei Device Co., Ltd.
+            </Dialog.Description>
+            <pre>{fontLicense}</pre>
+            <Dialog.Close asChild>
+              <button className="secondary-button">关闭</button>
+            </Dialog.Close>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
     </div>
   );
 }

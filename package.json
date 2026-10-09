@@ -1,27 +1,31 @@
 {
-  "name": "win-toolbox",
+  "name": "winease",
   "private": true,
-  "version": "3.4.0",
-  "description": "给中文用户做的极简 Windows 效率控制台：截图、清理、修复、空间管理、Qclaw、图片查看器和常用效率组件，一装即用。",
+  "version": "3.5.0",
+  "description": "极简 Windows 工具箱：清理、空间管理、系统维护与常用设置。",
   "type": "module",
   "scripts": {
+    "brand:generate": "powershell -ExecutionPolicy Bypass -File scripts/generate-brand-assets.ps1",
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri"
   },
   "dependencies": {
-    "@tauri-apps/api": "^2",
-    "@tauri-apps/plugin-opener": "^2",
-    "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "@radix-ui/react-alert-dialog": "^1.1.23",
+    "@radix-ui/react-dialog": "^1.1.23",
+    "@tauri-apps/api": "^2.12.1",
+    "@tauri-apps/plugin-opener": "^2.7.0",
+    "@tauri-apps/plugin-updater": "^2.13.1",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2",
-    "@types/react": "^19.1.8",
-    "@types/react-dom": "^19.1.6",
-    "@vitejs/plugin-react": "^4.6.0",
-    "typescript": "~5.8.3",
-    "vite": "^7.0.4"
+    "@tauri-apps/cli": "^2.12.1",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.2"
   }
 }
