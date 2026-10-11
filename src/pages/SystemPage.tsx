@@ -1,12 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
-import { windowsSettingLinks } from "../content";
+import { windowsToolGroups } from "../content";
 import type { WindowsSetting } from "../types";
+import { CheckIcon } from "../CheckIcon";
 import { ConfirmDialog } from "../ConfirmDialog";
 
 export function SystemPage({
   onOpenTarget,
+  active = true,
 }: {
+  active?: boolean;
   onOpenTarget: (target: string) => void;
 }) {
   const [settings, setSettings] = useState<WindowsSetting[]>([]);
@@ -16,18 +19,25 @@ export function SystemPage({
   const [repairLog, setRepairLog] = useState("");
   const [repairRestart, setRepairRestart] = useState(false);
   const lock = useRef(false);
+  const repairLock = useRef(false);
+  const activated = useRef(false);
+  const [repairBusy, setRepairBusy] = useState(false);
+  const [repairMessage, setRepairMessage] = useState("");
+  const [repairError, setRepairError] = useState("");
   const [power, setPower] = useState<{
     mode: string;
     performanceAvailable: boolean;
   } | null>(null);
   const [repairConfirm, setRepairConfirm] = useState(false);
   async function refresh() {
-    const [items, plan] = await Promise.all([
+    const [items, plan] = await Promise.allSettled([
       invoke<WindowsSetting[]>("get_windows_settings"),
       invoke<{ mode: string; performanceAvailable: boolean }>("get_power_plan"),
     ]);
-    setSettings(items);
-    setPower(plan);
+    if (items.status === "fulfilled") setSettings(items.value);
+    if (plan.status === "fulfilled") setPower(plan.value);
+    const failures = [items, plan].filter(result => result.status === "rejected").map(result => String(result.reason));
+    setError(failures.join("；"));
   }
   async function setPlan(mode: string) {
     if (lock.current) return;
@@ -62,8 +72,11 @@ export function SystemPage({
     }
   }
   useEffect(() => {
-    if (isTauri()) void refresh().catch((err) => setError(String(err)));
-  }, []);
+    if (active && !activated.current && isTauri()) {
+      activated.current = true;
+      void refresh().catch((err) => setError(String(err)));
+    }
+  }, [active]);
   async function change(id: string, enabled?: boolean) {
     if (lock.current) return;
     lock.current = true;
@@ -78,7 +91,7 @@ export function SystemPage({
         { id, enabled },
       );
       await refresh();
-      setMessage("已生效，资源管理器已自动刷新。");
+      setMessage(id === "autoplay" ? "设置已保存，下一次插入设备时使用。" : "设置已保存，资源管理器已自动刷新。");
     } catch (err) {
       setError(String(err));
     } finally {
@@ -87,12 +100,13 @@ export function SystemPage({
     }
   }
   async function repairWindows() {
-    if (lock.current) return;
-    lock.current = true;
-    setBusy(true);
-    setError("");
-    setMessage("系统修复中，可能需要数分钟…");
+    if (repairLock.current) return;
+    repairLock.current = true;
+    setRepairBusy(true);
+    setRepairError("");
+    setRepairMessage("系统修复中，可能需要数分钟…");
     setRepairLog("");
+    setRepairRestart(false);
     try {
       const result = await invoke<{
         success: boolean;
@@ -100,16 +114,16 @@ export function SystemPage({
         logs: string;
         restart: boolean;
       }>("repair_windows");
-      setMessage(result.message);
+      setRepairMessage(result.message);
       setRepairLog(result.logs);
       setRepairRestart(result.restart);
-      if (!result.success) setError(result.message);
+      if (!result.success) setRepairError(result.message);
     } catch (e) {
-      setError(String(e));
-      setMessage("");
+      setRepairError(String(e));
+      setRepairMessage("");
     } finally {
-      lock.current = false;
-      setBusy(false);
+      repairLock.current = false;
+      setRepairBusy(false);
     }
   }
   return (
@@ -143,15 +157,15 @@ export function SystemPage({
           settings.map((item) => (
             <div className="setting-line" key={item.id}>
               <label>
-                <input
-                  type="checkbox"
-                  checked={item.enabled}
-                  disabled={busy}
-                  onChange={(event) =>
-                    void change(item.id, event.target.checked)
-                  }
-                />
-                {item.label}
+                {item.enabled === null ? <select aria-label={item.label} value="default" disabled={busy || !!item.error}
+                  onChange={event => void change(item.id, event.target.value === "on")}>
+                  <option value="default" disabled>系统默认</option><option value="on">开启</option><option value="off">关闭</option>
+                </select> : <input type="checkbox" role="switch" aria-label={item.label}
+                  checked={item.enabled} disabled={busy || !!item.error}
+                  onChange={event => void change(item.id, event.target.checked)}/>}
+                <span><strong>{item.label}</strong><small className="setting-description">{item.description}</small>
+                  {item.error ? <small className="inline-error">{item.error}</small> : item.enabled === null && <small className="scope-note">未显式设置，使用系统默认</small>}
+                </span>
               </label>
               <button
                 className="ghost-button"
@@ -204,24 +218,15 @@ export function SystemPage({
             修复
           </button>
         </div>
-        <div className="quick-path-grid">
-          {windowsSettingLinks.map((item) => (
-            <button
-              key={`${item.target}:${item.label}`}
-              type="button"
-              className="quick-path"
-              onClick={() => onOpenTarget(item.target)}
-            >
-              <strong>{item.label}</strong>
-              <span>
-                {item.label === "重置默认应用"
-                  ? "在默认应用页面点击重置 ↗"
-                  : "打开设置 ↗"}
-              </span>
-            </button>
-          ))}
-        </div>
       </section>
+      {windowsToolGroups.map(group => <section className="surface" key={group.title}>
+        <div className="section-head"><h2>{group.title}</h2></div>
+        <div className="quick-path-grid">{group.items.map(item => <button
+          key={item.target} type="button" className="quick-path system-tool"
+          onClick={() => onOpenTarget(item.target)}>
+          <CheckIcon kind={item.target.includes("gaming") ? "game" : item.target.includes("power") ? "power" : item.target.includes("visualeffects") || item.target.includes("taskbar") ? "display" : item.target.includes("notifications") ? "notifications" : group.icon}/><div><strong>{item.label}</strong><span>{item.detail}</span></div><span aria-hidden="true">↗</span>
+        </button>)}</div>
+      </section>)}
       <ConfirmDialog
         open={repairConfirm}
         title="修复任务栏？"
@@ -240,11 +245,13 @@ export function SystemPage({
         </p>
         <button
           className="secondary-button"
-          disabled={busy}
+          disabled={repairBusy}
           onClick={() => void repairWindows()}
         >
-          {busy ? "处理中…" : "检查并修复"}
+          {repairBusy ? "修复中…" : "检查并修复"}
         </button>
+        {repairMessage && <p className="scope-note" role="status">{repairMessage}</p>}
+        {repairError && <p className="inline-error" role="alert">{repairError}</p>}
         {repairRestart && (
           <p className="scope-note">
             系统要求重启电脑后完成修复，请保存工作后重启。

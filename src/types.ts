@@ -24,7 +24,9 @@ export type CleaningScan = {
 export type WindowsSetting = {
   id: string;
   label: string;
-  enabled: boolean;
+  description: string;
+  error: string | null;
+  enabled: boolean | null;
   canRestore: boolean;
 };
 

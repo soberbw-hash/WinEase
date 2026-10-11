@@ -227,7 +227,7 @@ function App() {
       );
       setActiveSection("applications");
     } else if (id === "open_system") setActiveSection("system");
-    else if (id === "open_devices" || id === "open_reliability") {
+    else if (id === "open_devices" || id === "open_reliability" || id === "open_drive_optimizer") {
       void invoke("open_health_tool", {tool: id}).catch(error => pushToast(String(error), true));
     } else if (id.startsWith("ms-settings:") || id.startsWith("windowsdefender:") || /^[A-Za-z]:[\\/]/.test(id)) void openTarget(id);
     else void runAction(id as ActionId);
@@ -371,9 +371,7 @@ function App() {
           />
         );
       case "system":
-        return (
-          <SystemPage onOpenTarget={(target) => void openTarget(target)} />
-        );
+        return null;
       case "components":
         return (
           <ComponentsPage
@@ -474,6 +472,9 @@ function App() {
             </div>
             <div hidden={activeSection !== "cleaning"}>
               <CleaningPage active={activeSection === "cleaning"} onResult={recordResult} />
+            </div>
+            <div hidden={activeSection !== "system"}>
+              <SystemPage active={activeSection === "system"} onOpenTarget={quickAction}/>
             </div>
             <div hidden={activeSection !== "efficiency"}>
               <FilesPage

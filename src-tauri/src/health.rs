@@ -48,7 +48,15 @@ fn missing(raw: &Value, id: &str) -> Option<String> {
         .find(|error| error["name"] == id)
         .map(|error| error["detail"].as_str().unwrap_or("未能读取").into())
         .or_else(|| {
-            if ["drives", "providers", "firewall", "devices", "events"].contains(&id)
+            if [
+                "drives",
+                "providers",
+                "firewall",
+                "devices",
+                "events",
+                "physicalDisks",
+            ]
+            .contains(&id)
                 && !raw[id].is_array()
             {
                 Some("未能完整读取检查数据".into())
@@ -118,6 +126,38 @@ pub(crate) fn analyze(raw: &Value) -> HealthReport {
             error,
             Some("open_storage"),
         ));
+    }
+    let disks = crate::network::arr(raw, "physicalDisks");
+    let error = missing(raw, "physicalDisks");
+    if error.is_some() || disks.is_empty() {
+        checks.push(row(
+            "physical-disks",
+            "磁盘健康",
+            "unknown",
+            error.unwrap_or("设备未提供磁盘健康数据".into()),
+            Some("ms-settings:disksandvolumes"),
+        ));
+    } else {
+        for (index, disk) in disks.iter().enumerate() {
+            let health = disk["health"].as_u64();
+            let operational = disk["operational"].as_array();
+            let failed = operational.is_some_and(|values| {
+                values
+                    .iter()
+                    .any(|v| matches!(v.as_u64(), Some(3 | 5 | 6 | 7 | 12 | 13)))
+            });
+            let okay = operational.is_some_and(|values| {
+                !values.is_empty() && values.iter().all(|v| v.as_u64() == Some(2))
+            });
+            let warning = matches!(health, Some(1 | 2)) || failed;
+            let healthy = health == Some(0) && okay;
+            checks.push(row(&format!("physical-disk-{index}"), "磁盘健康",
+                if warning { "attention" } else if healthy { "healthy" } else { "unknown" },
+                format!("{}：{}", disk["name"].as_str().filter(|s| !s.is_empty()).unwrap_or("磁盘"),
+                    if warning { "Windows 报告健康或运行异常；先备份重要文件，再检查硬件。清理不能修复硬盘故障。" }
+                    else if healthy { "Windows 当前未报告健康异常；此结果不代表完整 SMART 检测或剩余寿命。" }
+                    else { "健康或运行状态未能核实" }), Some("ms-settings:disksandvolumes")));
+        }
     }
     let defender = &raw["defender"];
     let third_party = crate::network::arr(raw, "providers")
@@ -381,6 +421,40 @@ mod tests {
                 "unknown"
             );
         }
+    }
+    #[test]
+    fn disk_health_requires_both_health_and_operational_evidence() {
+        let result = analyze(&json!({"physicalDisks":[
+            {"name":"Good", "health":0,"operational":[2]},
+            {"name":"Warning", "health":1,"operational":[2]},
+            {"name":"Lost", "health":0,"operational":[13]},
+            {"name":"Unknown", "health":0,"operational":[]},
+            {"name":"Missing", "operational":[2]}
+        ]}));
+        for (index, status) in ["healthy", "attention", "attention", "unknown", "unknown"]
+            .iter()
+            .enumerate()
+        {
+            assert_eq!(
+                result
+                    .checks
+                    .iter()
+                    .find(|c| c.id == format!("physical-disk-{index}"))
+                    .unwrap()
+                    .status,
+                *status
+            );
+        }
+        let result = analyze(
+            &json!({"physicalDisks":[],"errors":[{"name":"physicalDisks","detail":"denied"}]}),
+        );
+        let check = result
+            .checks
+            .iter()
+            .find(|c| c.id == "physical-disks")
+            .unwrap();
+        assert_eq!(check.status, "unknown");
+        assert_eq!(check.detail, "denied");
     }
     #[test]
     fn genuine_pressure_and_security_findings_are_actionable() {

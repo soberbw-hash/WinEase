@@ -1817,3 +1817,10 @@ code {
 .storage-file-icon {display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;color:#50799c;min-width:32px;}
 .storage-file-icon .application-icon {width:28px;height:28px;}
 .storage-file-icon small {font-size:9px;line-height:12px;font-weight:600;color:#50799c;max-width:36px;overflow:hidden;}
+
+.setting-description { display: block; color: #68707c; font-size: 12px; margin-top: 4px; }
+.system-tool { display: flex; align-items: center; gap: 10px; }
+.system-tool > div { flex: 1; min-width: 0; display: grid; gap: 5px; }
+.setting-line label { gap: 10px; }
+
+.setting-line select { max-width: 100%; padding: 8px 12px; border: 1px solid #dce0e6; border-radius: 6px; background: #fff; color: inherit; }

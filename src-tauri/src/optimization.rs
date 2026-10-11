@@ -914,6 +914,7 @@ pub fn open_health_tool(tool: String) -> Result<(), String> {
             vec![windows.join("devmgmt.msc").to_string_lossy().into()],
         ),
         "open_reliability" => (windows.join("perfmon.exe"), vec!["/rel".into()]),
+        "open_drive_optimizer" => (windows.join("dfrgui.exe"), vec![]),
         _ => return Err("未知系统工具".into()),
     };
     crate::component_launcher::launch(&program, &args)
