@@ -91,7 +91,7 @@ export function SystemPage({
         { id, enabled },
       );
       await refresh();
-      setMessage(id === "autoplay" ? "设置已保存，下一次插入设备时使用。" : "设置已保存，资源管理器已自动刷新。");
+      setMessage(id === "autoplay" ? "设置已保存，下一次插入设备时使用。" : id === "block-suggested-apps" ? "设置已保存，后续推荐应用安装使用此配置；已有应用保留。" : "设置已保存，资源管理器已自动刷新。");
     } catch (err) {
       setError(String(err));
     } finally {
@@ -224,7 +224,7 @@ export function SystemPage({
         <div className="quick-path-grid">{group.items.map(item => <button
           key={item.target} type="button" className="quick-path system-tool"
           onClick={() => onOpenTarget(item.target)}>
-          <CheckIcon kind={item.target.includes("gaming") ? "game" : item.target.includes("power") ? "power" : item.target.includes("visualeffects") || item.target.includes("taskbar") ? "display" : item.target.includes("notifications") ? "notifications" : group.icon}/><div><strong>{item.label}</strong><span>{item.detail}</span></div><span aria-hidden="true">↗</span>
+          <CheckIcon kind={item.target.includes("gaming") ? "game" : item.target.includes("power") ? "power" : item.target.includes("notifications") ? "notifications" : group.icon}/><div><strong>{item.label}</strong><span>{item.detail}</span></div><span aria-hidden="true">↗</span>
         </button>)}</div>
       </section>)}
       <ConfirmDialog

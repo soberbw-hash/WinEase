@@ -1,7 +1,7 @@
 async (page) => {
   await page.addInitScript(() => {
     window.isTauri=true;window.calls=[];let callback=0;
-    let settings=[{id:'hidden-files',label:'显示隐藏文件',description:'隐藏文件',enabled:false,canRestore:false,error:null},{id:'transparency',label:'透明效果',description:'外观偏好',enabled:true,canRestore:false,error:null},{id:'autoplay',label:'移动设备自动播放',description:'移动设备',enabled:null,canRestore:false,error:null}];
+    let settings=[{id:'hidden-files',label:'显示隐藏文件',description:'隐藏文件',enabled:false,canRestore:false,error:null},{id:'block-suggested-apps',label:'阻止自动安装推荐应用',description:'保留已有应用',enabled:false,canRestore:false,error:null},{id:'reduce-explorer-promotions',label:'减少资源管理器推广',description:'推广提示',enabled:true,canRestore:false,error:null},{id:'autoplay',label:'移动设备自动播放',description:'移动设备',enabled:null,canRestore:false,error:null}];
     window.__TAURI_INTERNALS__={transformCallback:()=>++callback,unregisterCallback:()=>{},invoke:async(cmd,args)=>{
       window.calls.push({cmd,args});
       if(cmd==='storage_drives')return [];
@@ -19,7 +19,10 @@ async (page) => {
   const nav=page.getByRole('navigation',{name:'主导航'});
   if(await page.evaluate(()=>window.calls.some(c=>c.cmd==='get_windows_settings')))throw Error('Hidden system page probes at startup');
   await nav.getByRole('button',{name:'系统工具',exact:true}).click();
-  await page.getByRole('switch',{name:'透明效果',exact:true}).waitFor();
+  await page.getByRole('switch',{name:'减少资源管理器推广',exact:true}).waitFor();
+  if(await page.getByRole('switch',{name:'透明效果',exact:true}).count() || await page.getByRole('button',{name:/视觉效果|任务栏设置/}).count())throw Error('Beautification controls still present');
+  await page.getByRole('switch',{name:'阻止自动安装推荐应用',exact:true}).check();
+  if(!await page.evaluate(()=>window.calls.some(c=>c.cmd==='set_windows_setting'&&c.args.id==='block-suggested-apps'&&c.args.enabled===true)))throw Error('Suggested-app block not applied');
   await page.getByText('电源计划读取失败',{exact:true}).waitFor();
   await page.getByRole('combobox',{name:'移动设备自动播放',exact:true}).selectOption('off');
   await page.getByRole('switch',{name:'移动设备自动播放',exact:true}).waitFor();
@@ -32,7 +35,7 @@ async (page) => {
   if(await page.getByRole('button',{name:/默认应用/}).count()!==1)throw Error('Duplicate default-app entry');
   await page.getByRole('button',{name:'检查并修复',exact:true}).click();
   await page.getByRole('button',{name:'修复中…',exact:true}).waitFor();
-  if(await page.getByRole('switch',{name:'透明效果'}).isDisabled())throw Error('System repair blocks unrelated settings');
+  if(await page.getByRole('switch',{name:'减少资源管理器推广'}).isDisabled())throw Error('System repair blocks unrelated settings');
   await nav.getByRole('button',{name:'首页',exact:true}).click();
   await page.evaluate(()=>window.finishRepair());
   await nav.getByRole('button',{name:'系统工具',exact:true}).click();
@@ -44,5 +47,5 @@ async (page) => {
   }
   await page.setViewportSize({width:1280,height:820});
   await page.screenshot({path:'output/playwright/system-tools.png',fullPage:true});
-  console.log('PASS: 7 system flows: lazy reads, isolated read failure, unset preference off, original restore, native tool route, independent repair/navigation, responsive layout');
+  console.log('PASS: 9 system flows: no beautification, suggested-app preference, lazy reads, isolated read failure, unset preference off, original restore, native tool route, independent repair/navigation, responsive layout');
 }

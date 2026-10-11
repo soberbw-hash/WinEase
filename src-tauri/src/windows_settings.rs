@@ -19,7 +19,7 @@ struct Definition {
     description: &'static str,
     refresh: bool,
 }
-const DEFINITIONS: [Definition; 3] = [
+const DEFINITIONS: [Definition; 4] = [
     Definition {
         id: "hidden-files",
         label: "显示隐藏文件",
@@ -31,13 +31,23 @@ const DEFINITIONS: [Definition; 3] = [
         refresh: true,
     },
     Definition {
-        id: "transparency",
-        label: "透明效果",
-        name: "EnableTransparency",
-        on: 1,
-        off: 0,
-        key: r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize",
-        description: "外观偏好；修改后自动刷新资源管理器。",
+        id: "block-suggested-apps",
+        label: "阻止自动安装推荐应用",
+        name: "SilentInstalledAppsEnabled",
+        on: 0,
+        off: 1,
+        key: r"Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager",
+        description: "减少推荐应用自动安装；不卸载已有应用。",
+        refresh: false,
+    },
+    Definition {
+        id: "reduce-explorer-promotions",
+        label: "减少资源管理器推广",
+        name: "ShowSyncProviderNotifications",
+        on: 0,
+        off: 1,
+        key: DOTNET_KEY,
+        description: "关闭同步服务推广提示；保留文件同步，自动刷新资源管理器。",
         refresh: true,
     },
     Definition {
@@ -311,7 +321,11 @@ mod tests {
             assert_eq!(setting_enabled(item, Some(item.on)), Some(true));
             assert_eq!(setting_enabled(item, Some(item.off)), Some(false));
         }
-        assert_ne!(definition("transparency").unwrap().key, DOTNET_KEY);
+        assert!(definition("transparency").is_err());
+        assert_ne!(definition("block-suggested-apps").unwrap().key, DOTNET_KEY);
+        assert_eq!(definition("block-suggested-apps").unwrap().on, 0);
+        assert!(!definition("block-suggested-apps").unwrap().refresh);
+        assert_eq!(definition("reduce-explorer-promotions").unwrap().on, 0);
         assert!(!definition("autoplay").unwrap().refresh);
     }
     #[test]
