@@ -19,7 +19,7 @@ struct Definition {
     description: &'static str,
     refresh: bool,
 }
-const DEFINITIONS: [Definition; 4] = [
+const DEFINITIONS: [Definition; 7] = [
     Definition {
         id: "hidden-files",
         label: "显示隐藏文件",
@@ -51,6 +51,36 @@ const DEFINITIONS: [Definition; 4] = [
         refresh: true,
     },
     Definition {
+        id: "local-search",
+        label: "搜索仅显示本地内容",
+        name: "DisableSearchBoxSuggestions",
+        on: 1,
+        off: 0,
+        key: r"Software\Policies\Microsoft\Windows\Explorer",
+        description: "减少搜索中的网页建议；不影响浏览器，修改后自动刷新资源管理器。",
+        refresh: true,
+    },
+    Definition {
+        id: "reduce-tips",
+        label: "减少系统使用建议",
+        name: "SubscribedContent-338389Enabled",
+        on: 0,
+        off: 1,
+        key: r"Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager",
+        description: "减少系统技巧推广；保留安全与应用通知。",
+        refresh: false,
+    },
+    Definition {
+        id: "disable-background-recording",
+        label: "关闭游戏后台录制",
+        name: "HistoricalCaptureEnabled",
+        on: 0,
+        off: 1,
+        key: r"Software\Microsoft\Windows\CurrentVersion\GameDVR",
+        description: "关闭后台录制；保留手动截图与录屏。",
+        refresh: false,
+    },
+    Definition {
         id: "autoplay",
         label: "移动设备自动播放",
         name: "DisableAutoplay",
@@ -78,12 +108,12 @@ fn definition(id: &str) -> Result<&'static Definition, String> {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WindowsSetting {
-    id: &'static str,
-    label: &'static str,
-    enabled: Option<bool>,
-    can_restore: bool,
-    description: &'static str,
-    error: Option<String>,
+    pub id: &'static str,
+    pub label: &'static str,
+    pub enabled: Option<bool>,
+    pub can_restore: bool,
+    pub description: &'static str,
+    pub error: Option<String>,
 }
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 struct Backup {

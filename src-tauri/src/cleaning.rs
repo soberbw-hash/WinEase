@@ -118,6 +118,11 @@ fn group_label(path: &Path, category: &str) -> String {
         ("brave", "Brave"),
         ("vivaldi", "Vivaldi"),
         ("firefox", "Firefox"),
+        ("opera", "Opera"),
+        ("epicgameslauncher", "Epic Games"),
+        ("\\squirreltemp", "应用安装器"),
+        ("\\yarn\\", "Yarn"),
+        ("ms-teams", "Teams"),
         ("nvidia", "NVIDIA"),
         ("npm-cache", "Node.js"),
         ("pip", "Python"),
@@ -130,6 +135,12 @@ fn group_label(path: &Path, category: &str) -> String {
         ("todesk", "ToDesk"),
         ("chatgpt", "ChatGPT"),
         ("\\code\\", "VS Code"),
+        ("code - insiders", "VS Code Insiders"),
+        ("vscodium", "VSCodium"),
+        ("cursor", "Cursor"),
+        ("notion", "Notion"),
+        ("obsidian", "Obsidian"),
+        ("packages\\", "Windows 应用"),
     ]
     .into_iter()
     .find(|(key, _)| text.contains(key))
@@ -159,6 +170,8 @@ fn cleaning_icon_target(label: &str) -> Option<String> {
         "Edge" => &[r"Microsoft\Edge\Application\msedge.exe"],
         "Brave" => &[r"BraveSoftware\Brave-Browser\Application\brave.exe"],
         "Vivaldi" => &[r"Vivaldi\Application\vivaldi.exe"],
+        "Opera" => &[r"Programs\Opera\opera.exe"],
+        "Epic Games" => &[r"Epic Games\Launcher\Portal\Binaries\Win64\EpicGamesLauncher.exe"],
         "Firefox" => &[r"Mozilla Firefox\firefox.exe"],
         "VS Code" => &[
             r"Microsoft VS Code\Code.exe",
@@ -420,16 +433,72 @@ fn take_scan(state: &CleaningState, scan_id: &str, categories: &[String]) -> Res
     }
     Ok(current.take().unwrap())
 }
+fn cache_owner_running(label: &str, names: &[String]) -> bool {
+    let owner = label.split(" · ").next().unwrap_or("");
+    let executables: &[&str] = match owner {
+        "Chrome" => &["chrome"],
+        "Edge" => &["msedge"],
+        "Brave" => &["brave"],
+        "Vivaldi" => &["vivaldi"],
+        "Firefox" => &["firefox"],
+        "Opera" => &["opera"],
+        "VS Code" | "VS Code Insiders" => &["Code", "Code - Insiders"],
+        "VSCodium" => &["VSCodium"],
+        "Cursor" => &["Cursor"],
+        "Notion" => &["Notion"],
+        "Obsidian" => &["Obsidian"],
+        "Discord" => &["Discord"],
+        "Slack" => &["Slack"],
+        "Teams" | "Windows 应用" => &["ms-teams", "Teams", "ChatGPT"],
+        "ChatGPT" => &["ChatGPT"],
+        "豆包" => &["Doubao"],
+        "ToDesk" => &["ToDesk"],
+        "Steam" => &["steam", "steamwebhelper"],
+        "Epic Games" => &["EpicGamesLauncher", "EpicWebHelper"],
+        _ => &[],
+    };
+    executables
+        .iter()
+        .any(|exe| names.iter().any(|name| name.eq_ignore_ascii_case(exe)))
+}
 fn clean_scan(scan: Scan, categories: &[String]) -> ToolActionResult {
     let started = Instant::now();
     let mut freed = 0;
     let mut removed = 0;
     let mut skipped = 0;
+    let mut running_skipped = 0;
+    let needs_apps = scan
+        .files
+        .iter()
+        .any(|f| matches!(f.category, "browser" | "applications"));
+    let running = if needs_apps {
+        let script="ConvertTo-Json -InputObject @(Get-Process | Select-Object -ExpandProperty ProcessName -Unique) -Compress";
+        crate::network::runtime::run(
+            &crate::local_app_data_dir()
+                .unwrap_or_else(std::env::temp_dir)
+                .join("WinToolbox/CleaningJobs"),
+            script,
+            15,
+        )
+        .ok()
+        .and_then(|raw| serde_json::from_str::<Vec<String>>(&raw).ok())
+    } else {
+        Some(Vec::new())
+    };
     for file in scan.files.iter().filter(|file| {
         categories
             .iter()
             .any(|id| id == file.category || *id == group_key(&scan, file))
     }) {
+        if matches!(file.category, "browser" | "applications")
+            && running.as_ref().is_none_or(|names| {
+                cache_owner_running(&group_label(&file.path, file.category), names)
+            })
+        {
+            running_skipped += 1;
+            skipped += 1;
+            continue;
+        }
         if !scan.roots.iter().any(|root| file.path.starts_with(root))
             || !no_reparse_ancestors(&file.path)
         {
@@ -473,7 +542,7 @@ fn clean_scan(scan: Scan, categories: &[String]) -> ToolActionResult {
     build_action_result("clean_selected", "临时文件清理", skipped == 0,
         format!("已清理 {removed} 个文件，释放 {}。", format_bytes(freed)),
         format!("已删除：{removed} 个文件\n文件大小合计：{}\n执行时跳过：{skipped} 个已变化、被占用或链接项目\n保留空目录", format_bytes(freed)),
-        None, if skipped > 0 { vec!["部分文件已变化或无法删除，可重新扫描。".into()] } else { Vec::new() }, started)
+        None, if skipped > 0 { vec![format!("跳过 {running_skipped} 个正在运行应用的缓存（或运行状态未核实）；其他文件已变化、被占用或无法删除，可关闭应用后重新扫描。") ] } else { Vec::new() }, started)
 }
 
 #[tauri::command]
@@ -637,6 +706,10 @@ fn extend_cleaners(scan: &mut Scan, local: &Path, budget: &mut ScanBudget) {
             targets.push((PathBuf::from(&data).join(folder), "crashes", MIN_AGE));
         }
     }
+    targets.extend(additional_cache_targets(
+        local,
+        std::env::var_os("APPDATA").map(PathBuf::from).as_deref(),
+    ));
     for (path, category, age) in targets {
         if budget.exhausted() {
             scan.limited = true;
@@ -665,6 +738,82 @@ fn extend_cleaners(scan: &mut Scan, local: &Path, budget: &mut ScanBudget) {
             Err(_) => scan.skipped += 1,
         }
     }
+}
+// Exact disposable subdirectories only, never package LocalState, game libraries,
+// browser profiles themselves, cookies, saved sessions, or chat databases.
+fn additional_cache_targets(
+    local: &Path,
+    roaming: Option<&Path>,
+) -> Vec<(PathBuf, &'static str, Duration)> {
+    let cache_age = Duration::from_secs(24 * 60 * 60);
+    let mut rows = Vec::new();
+    for relative in [
+        r"EpicGamesLauncher\Saved\webcache",
+        r"EpicGamesLauncher\Saved\webcache_4147",
+        r"EpicGamesLauncher\Saved\webcache_4430",
+    ] {
+        // The webcache profile contains login state: only its disposable cache directories.
+        let base = local.join(relative);
+        for cache in ["Cache", "Code Cache", "GPUCache"] {
+            rows.push((base.join(cache), "applications", cache_age));
+        }
+    }
+    rows.push((local.join("SquirrelTemp"), "temporary", MIN_AGE));
+    rows.push((local.join(r"Yarn\Cache"), "downloads-cache", MIN_AGE));
+    if let Some(roaming) = roaming {
+        for app in [
+            "Cursor",
+            "VSCodium",
+            "Code - Insiders",
+            "Notion",
+            "Obsidian",
+        ] {
+            for cache in ["Cache", "Code Cache", "GPUCache"] {
+                rows.push((roaming.join(app).join(cache), "applications", cache_age));
+            }
+        }
+        for app in [
+            r"Opera Software\Opera Stable",
+            r"Opera Software\Opera GX Stable",
+        ] {
+            for cache in ["Cache", "Code Cache", "GPUCache"] {
+                rows.push((roaming.join(app).join(cache), "browser", cache_age));
+            }
+        }
+    }
+    for app in [
+        r"Opera Software\Opera Stable",
+        r"Opera Software\Opera GX Stable",
+    ] {
+        rows.push((local.join(app).join("Cache"), "browser", cache_age));
+    }
+    if let Ok(packages) = fs::read_dir(local.join("Packages")) {
+        for package in packages.flatten() {
+            let name = package.file_name().to_string_lossy().into_owned();
+            // Only reviewed Chromium/Electron package families, not all UWP app data.
+            if ![
+                "MSTeams_8wekyb3d8bbwe",
+                "OpenAI.ChatGPT-Desktop_2p2nqsd0c76g0",
+            ]
+            .contains(&name.as_str())
+            {
+                continue;
+            }
+            for app in [
+                r"LocalCache\Microsoft\MSTeams",
+                r"LocalCache\Roaming\ChatGPT",
+            ] {
+                for cache in ["Cache", "Code Cache", "GPUCache"] {
+                    rows.push((
+                        package.path().join(app).join(cache),
+                        "applications",
+                        cache_age,
+                    ));
+                }
+            }
+        }
+    }
+    rows
 }
 #[tauri::command]
 pub async fn clean_selected(
@@ -725,6 +874,41 @@ mod tests {
         );
         filetime::set_file_mtime(&path, modified).unwrap();
         path
+    }
+    #[test]
+    fn additional_cache_rules_preserve_profile_and_personal_data() {
+        let root = tempfile::tempdir().unwrap();
+        let local = root.path().join("Local");
+        let roaming = root.path().join("Roaming");
+        let profile = roaming.join("Obsidian");
+        let cache = profile.join("Cache");
+        fs::create_dir_all(&cache).unwrap();
+        let disposable = old_file(&cache, "cache.bin");
+        let personal = old_file(&profile, "notes.db");
+        let targets = additional_cache_targets(&local, Some(&roaming));
+        assert!(targets
+            .iter()
+            .all(|(p, _, _)| p != &profile && !p.ends_with("LocalState") && !p.ends_with("tdata")));
+        let (path, category, age) = targets.iter().find(|(p, _, _)| p == &cache).unwrap();
+        assert_eq!(*category, "applications");
+        let scan = scan_root_age(path, *age).unwrap();
+        assert_eq!(scan.files.len(), 1);
+        let result = clean_scan(scan, &["temporary".into()]);
+        assert!(result.success);
+        assert!(!disposable.exists());
+        assert!(personal.exists());
+    }
+    #[test]
+    fn running_cache_owners_match_exact_process_names() {
+        assert!(cache_owner_running("Chrome · 网页缓存", &["CHROME".into()]));
+        assert!(!cache_owner_running(
+            "Chrome · 网页缓存",
+            &["notchrome".into()]
+        ));
+        assert!(cache_owner_running(
+            "Epic Games · 运行缓存",
+            &["EpicWebHelper".into()]
+        ));
     }
     #[test]
     fn shared_scan_budget_limits_all_roots_and_retains_partial_evidence() {

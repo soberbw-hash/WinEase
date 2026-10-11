@@ -2,6 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { ApplicationIcon } from "../ApplicationIcon";
+import { PreinstalledApps } from "../PreinstalledApps";
+import { ResourceAnalysis } from "../ResourceAnalysis";
+import { CheckIcon } from "../CheckIcon";
 import { formatBytes } from "../format";
 import type { ComponentManifest } from "../types";
 
@@ -22,14 +25,16 @@ type Startup = {
   editable: boolean;
   source: string;
 };
-export type ManagementTab = "processes" | "startup" | "uninstall" | "popups";
+export type ManagementTab = "processes" | "startup" | "uninstall" | "popups" | "preinstalled";
 export function ManagementPage({
+  active: pageActive = true,
   initialTab,
   components,
   componentBusy,
   onComponent,
   onOpenTarget,
 }: {
+  active?: boolean;
   initialTab: ManagementTab;
   components: ComponentManifest[];
   componentBusy: boolean;
@@ -59,7 +64,7 @@ export function ManagementPage({
       if (next === "startup") {
         const items = await invoke<Startup[]>("list_startup_items");
         if (request === generation.current) setStartup(items);
-      } else if (next !== "uninstall") {
+      } else if (next !== "uninstall" && next !== "preinstalled") {
         const items = await invoke<Process[]>(
           next === "popups" ? "list_application_windows" : "list_processes",
         );
@@ -87,7 +92,7 @@ export function ManagementPage({
     };
   }, [tab]);
   useEffect(() => {
-    if (tab !== "popups" || !isTauri()) return;
+    if (!pageActive || tab !== "popups" || !isTauri()) return;
     let active = true;
     const timer = setInterval(() => {
       void invoke<typeof rules>("list_popup_rules")
@@ -100,7 +105,7 @@ export function ManagementPage({
       active = false;
       clearInterval(timer);
     };
-  }, [tab]);
+  }, [tab, pageActive]);
   async function apply(direct?: Startup) {
     const item = direct ?? pending;
     setPending(null);
@@ -168,6 +173,7 @@ export function ManagementPage({
             ["processes", "进程管理"],
             ["startup", "开机管理"],
             ["uninstall", "深度卸载"],
+            ["preinstalled", "预装应用"],
             ["popups", "弹窗管理"],
           ] as const
         ).map(([id, label]) => (
@@ -177,11 +183,13 @@ export function ManagementPage({
             disabled={lock.current}
             onClick={() => setTab(id)}
           >
-            {label}
+            <CheckIcon kind={id === "startup" ? "startup" : id === "processes" ? "display" : id === "popups" ? "notifications" : "files"}/>{label}
           </button>
         ))}
       </nav>
-      <section className="surface">
+      <ResourceAnalysis visible={tab === "processes" || tab === "startup"}/>
+      <PreinstalledApps visible={tab === "preinstalled"} onOpenTarget={onOpenTarget}/>
+      <section className="surface" hidden={tab === "preinstalled"}>
         <div className="section-head">
           <h2>
             {tab === "startup"

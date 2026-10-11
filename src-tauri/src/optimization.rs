@@ -1,6 +1,6 @@
 //! One reviewed plan owns its evidence, cache/file tokens and executable actions.
 //! The renderer sends only IDs from this plan; it cannot supply paths or commands.
-use crate::{cleaning, file_management, health, management, network};
+use crate::{cleaning, community, file_management, health, management, network, windows_settings};
 use serde::Serialize;
 use std::{
     collections::{BTreeMap, HashSet},
@@ -28,6 +28,17 @@ struct Resources {
 }
 #[derive(Clone)]
 enum Action {
+    Preference {
+        id: String,
+        expected: Option<bool>,
+    },
+    Maintenance {
+        action: String,
+    },
+    App {
+        name: String,
+        full_name: String,
+    },
     Clean {
         scan_id: String,
         groups: Vec<String>,
@@ -134,6 +145,10 @@ fn blank_report() -> Report {
             ("health", "电脑体检"),
             ("network", "网络检测"),
             ("startup", "开机管理"),
+            ("performance", "启动与后台分析"),
+            ("maintenance", "更新与应用安装"),
+            ("preferences", "功能偏好"),
+            ("apps", "预装应用"),
         ]
         .into_iter()
         .map(|(id, title)| Section {
@@ -206,6 +221,10 @@ async fn run_check(core: Arc<Core>, id: String, resources: Arc<Resources>) {
     job!("health", scan_health());
     job!("network", scan_network());
     job!("startup", scan_startup());
+    job!("performance", scan_resources());
+    job!("maintenance", scan_maintenance());
+    job!("preferences", scan_preferences());
+    job!("apps", scan_apps());
     for (section, task) in tasks {
         if let Err(error) = task.await {
             publish(&core, &id, section, Err(format!("检查任务异常：{error}")));
@@ -706,6 +725,194 @@ async fn scan_startup() -> Result<Findings, String> {
         actions,
     })
 }
+async fn scan_resources() -> Result<Findings, String> {
+    let report = community::analyze_resources().await?;
+    let mut items = Vec::new();
+    if let Some(boot) = report.boot {
+        items.push(item(
+            "boot-duration",
+            "最近开机记录",
+            format!(
+                "耗时 {:.1} 秒，记录时间 {}。不是本次即时开机计时。",
+                boot.duration_ms as f64 / 1000.0,
+                boot.time
+            ),
+            "info",
+        ));
+    } else {
+        items.push(item(
+            "boot-unavailable",
+            "开机记录未核实",
+            report.boot_error.unwrap_or("暂无性能诊断记录".into()),
+            "unknown",
+        ));
+    }
+    for (i, group) in report.groups.iter().take(15).enumerate() {
+        let mut row = item(
+            format!("resource-{i}"),
+            &group.name,
+            format!(
+                "{} 个进程；连续 {:.1} 秒平均 CPU {:.1}%、内存 {}。{}",
+                group.process_count,
+                report.seconds,
+                group.cpu_percent,
+                crate::format_bytes(group.memory_bytes),
+                if group.attention {
+                    "占用较高；先核对工作负载，在进程管理中处理。"
+                } else {
+                    "本次采样未达高占用阈值。"
+                }
+            ),
+            if group.attention { "attention" } else { "info" },
+        );
+        row.icon_target = Some(group.path.clone());
+        row.icon_kind = "application".into();
+        row.target = Some("open_processes".into());
+        items.push(row);
+    }
+    for (i, entry) in report.startup.iter().enumerate() {
+        let mut row = item(
+            format!("boot-delay-{i}"),
+            entry.name.as_deref().unwrap_or("启动延迟记录"),
+            format!(
+                "最近记录的额外延迟 {}；可在开机管理中核对，不据此停用未知应用。",
+                entry
+                    .delay_ms
+                    .map(|v| format!("{:.1} 秒", v as f64 / 1000.0))
+                    .unwrap_or("未核实".into())
+            ),
+            "attention",
+        );
+        row.icon_target = entry.path.clone();
+        row.target = Some("open_startup".into());
+        items.push(row);
+    }
+    Ok(Findings {
+        summary: format!(
+            "连续采样 {:.1} 秒，{} 个应用组",
+            report.seconds,
+            report.groups.len()
+        ),
+        items,
+        actions: BTreeMap::new(),
+    })
+}
+async fn scan_maintenance() -> Result<Findings, String> {
+    let report = community::check_maintenance().await?;
+    let mut items = Vec::new();
+    let mut actions = BTreeMap::new();
+    let mut offered = HashSet::new();
+    for check in report.checks {
+        let mut row = item(
+            format!("maintenance-{}", check.id),
+            check.title,
+            check.detail,
+            &check.status,
+        );
+        row.target = Some("open_system".into());
+        row.icon_kind = "repair".into();
+        if let Some(action) = check.repair {
+            if offered.insert(action.clone()) {
+                // Preference/service changes and package registration are explicitly optional.
+                enable(&mut row, "修复安装与更新", false);
+                row.status = "optional".into();
+                actions.insert(row.id.clone(), Action::Maintenance { action });
+            }
+        }
+        items.push(row);
+    }
+    Ok(Findings {
+        summary: "检查服务、近期安装记录、商店注册与 WinGet；未联网触发系统更新。".into(),
+        items,
+        actions,
+    })
+}
+async fn scan_preferences() -> Result<Findings, String> {
+    let settings = windows_settings::get_windows_settings().await?;
+    let mut items = Vec::new();
+    let mut actions = BTreeMap::new();
+    for setting in settings.into_iter().filter(|s| {
+        matches!(
+            s.id,
+            "block-suggested-apps"
+                | "reduce-explorer-promotions"
+                | "local-search"
+                | "reduce-tips"
+                | "disable-background-recording"
+        )
+    }) {
+        let mut row = item(
+            format!("preference-{}", setting.id),
+            setting.label,
+            format!(
+                "{} {}",
+                setting.description,
+                if setting.enabled == Some(true) {
+                    "已开启此偏好。"
+                } else {
+                    "可选偏好，不是故障；选择后开启，原值可恢复。"
+                }
+            ),
+            if setting.error.is_some() {
+                "unknown"
+            } else if setting.enabled == Some(true) {
+                "info"
+            } else {
+                "optional"
+            },
+        );
+        row.target = Some("open_system".into());
+        row.icon_kind = "system".into();
+        if let Some(error) = setting.error {
+            row.detail = error;
+        } else if setting.enabled != Some(true) {
+            enable(&mut row, "调整功能偏好", false);
+            actions.insert(
+                row.id.clone(),
+                Action::Preference {
+                    id: setting.id.into(),
+                    expected: setting.enabled,
+                },
+            );
+        }
+        items.push(row);
+    }
+    Ok(Findings {
+        summary: "推广、本地搜索和后台录制；保留原偏好，按需勾选。".into(),
+        items,
+        actions,
+    })
+}
+async fn scan_apps() -> Result<Findings, String> {
+    let rows = community::list_preinstalled_apps().await?;
+    let mut items = Vec::new();
+    let mut actions = BTreeMap::new();
+    for app in rows.iter().filter(|r| r.removable) {
+        let mut row=item(format!("app-{}",app.name),&app.label,format!("{}。仅移除当前用户；可能删除应用数据。可尝试重新注册或商店重装，安装信息不是数据备份。{}",app.purpose,if app.size_limited{"占用为部分统计。"}else{""}),"optional");
+        row.size_bytes = app.size_bytes.unwrap_or(0);
+        row.icon_kind = "application".into();
+        row.icon_target = app.icon_target.clone();
+        row.target = Some("open_preinstalled".into());
+        enable(&mut row, "卸载可选应用", false);
+        actions.insert(
+            row.id.clone(),
+            Action::App {
+                name: app.name.clone(),
+                full_name: app.full_name.clone(),
+            },
+        );
+        items.push(row);
+    }
+    Ok(Findings {
+        summary: format!(
+            "{} 个已安装/恢复记录，{} 个可选应用；默认保留所有应用。",
+            rows.len(),
+            items.len()
+        ),
+        items,
+        actions,
+    })
+}
 fn approved_actions(
     session: &Session,
     selected: &[String],
@@ -803,8 +1010,14 @@ async fn apply_actions(
     let mut recycle: BTreeMap<String, (Vec<String>, Vec<usize>)> = BTreeMap::new();
     let mut startup = Vec::new();
     let mut networks = Vec::new();
+    let mut preferences = Vec::new();
+    let mut maintenance = Vec::new();
+    let mut apps = Vec::new();
     for (item, action) in actions {
         match action {
+            Action::Preference { id, expected } => preferences.push((item, id, expected)),
+            Action::Maintenance { action } => maintenance.push((item, action)),
+            Action::App { name, full_name } => apps.push((item, name, full_name)),
             Action::Clean { scan_id, groups } => {
                 let entry = cleaning.entry(scan_id).or_default();
                 entry.0.push(item);
@@ -848,6 +1061,37 @@ async fn apply_actions(
             .await
             .map(|_| format!("已关闭 {name} 的开机启动，可在开机管理中恢复。"));
         outcome(core, id, vec![item], "开机优化", result);
+    }
+    for (item, setting, expected) in preferences {
+        let result = async {
+            let rows = windows_settings::get_windows_settings().await?;
+            let current = rows
+                .iter()
+                .find(|r| r.id == setting)
+                .ok_or("偏好项目已变化")?;
+            if current.error.is_some() || current.enabled != expected {
+                return Err("偏好配置已变化或读取失败，请重新检查".into());
+            }
+            windows_settings::set_windows_setting(setting.clone(), true).await?;
+            let verify = windows_settings::get_windows_settings().await?;
+            if !verify
+                .iter()
+                .any(|r| r.id == setting && r.enabled == Some(true) && r.error.is_none())
+            {
+                return Err("配置复检失败，备份保留".into());
+            }
+            Ok("偏好已保存并复检，原值可在系统工具恢复；系统版本或策略可能限制实际效果。".into())
+        }
+        .await;
+        outcome(core, id, vec![item], "功能偏好", result);
+    }
+    for (item, action) in maintenance {
+        let result = community::repair_maintenance(action, true).await;
+        outcome(core, id, vec![item], "安装与更新修复", result);
+    }
+    for (item, name, full_name) in apps {
+        let result = community::manage_preinstalled_app(name, full_name, false, true).await;
+        outcome(core, id, vec![item], "可选应用卸载", result);
     }
     // Leave potentially disruptive network actions until file and startup operations finish.
     for (item, scan_id) in networks {

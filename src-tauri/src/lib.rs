@@ -5,6 +5,7 @@ mod component_updates;
 mod file_management;
 mod health;
 mod management;
+mod community;
 mod network;
 mod optimization;
 mod system_repair;
@@ -2097,6 +2098,12 @@ pub fn run() {
             windows_settings::set_windows_setting,
             windows_settings::restore_windows_setting,
             management::list_processes,
+            community::analyze_resources,
+            community::check_maintenance,
+            community::repair_maintenance,
+            community::list_preinstalled_apps,
+            community::manage_preinstalled_app,
+            system_repair::restore_update_services,
             application_icons::get_application_icon,
             application_icons::get_file_icon,
             management::list_application_windows,

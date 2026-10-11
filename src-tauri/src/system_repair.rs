@@ -38,9 +38,64 @@ try {
  @{success=$true;message='系统组件修复与文件检查已完成，请查看结果记录。';logs=($logs -join "`n");restart=$restart}|ConvertTo-Json -Compress
 } catch { @{success=$false;message=$_.Exception.Message;logs=($logs -join "`n");restart=$restart}|ConvertTo-Json -Compress }
 "#;
+const UPDATE_SERVICES: &str = r#"
+$ErrorActionPreference='Stop'
+try {
+ if(Test-Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate'){throw '检测到更新管理策略，请由系统管理员确认，不覆盖组织配置'}
+ $backup=Join-Path $jobRoot 'update-service-backup.json'
+ $names=@('wuauserv','BITS');$rows=@()
+ if($operation -eq 'restore-update-services') {
+  if(!(Test-Path -LiteralPath $backup)){throw '没有更新服务恢复记录'}
+  $rows=@(Get-Content -LiteralPath $backup -Raw | ConvertFrom-Json)
+ } else {
+  foreach($name in $names) {
+   $service=Get-CimInstance Win32_Service -Filter "Name='$name'" -OperationTimeoutSec 8
+   if(!$service){throw "找不到服务 $name"}
+   if($service.StartMode -eq 'Disabled'){$rows+=[pscustomobject]@{name=$name;mode='Disabled';state=[string]$service.State}}
+  }
+  if(!$rows.Count){throw '服务已不是禁用状态，请重新检查，无需修改'}
+  if(Test-Path -LiteralPath $backup){throw '已有更新服务恢复记录；请先恢复或保留现状，不覆盖原配置'}
+  $stream=[IO.File]::Open($backup,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None)
+  try {$bytes=[Text.Encoding]::UTF8.GetBytes((ConvertTo-Json -InputObject $rows -Compress));$stream.Write($bytes,0,$bytes.Length);$stream.Flush($true)}finally{$stream.Dispose()}
+ }
+ foreach($row in $rows) {
+  if($row.name -notin $names -or $row.mode -ne 'Disabled' -or $row.state -notin @('Stopped','Running')){throw '更新服务恢复记录无效'}
+ }
+ foreach($row in $rows) {
+  if($operation -eq 'restore-update-services') {
+   if($row.state -eq 'Stopped'){Stop-Service -Name $row.name -ErrorAction Stop}
+   $text=& "$env:windir\System32\sc.exe" config $row.name start= disabled 2>&1
+   if($LASTEXITCODE -ne 0){throw ($text -join "`n")}
+   $again=Get-CimInstance Win32_Service -Filter "Name='$($row.name)'" -OperationTimeoutSec 8
+   if($again.StartMode -ne 'Disabled'){throw '服务恢复校验失败'}
+  } else {
+   $text=& "$env:windir\System32\sc.exe" config $row.name start= demand 2>&1
+   if($LASTEXITCODE -ne 0){throw ($text -join "`n")}
+   Start-Service -Name $row.name -ErrorAction Stop
+   $again=Get-CimInstance Win32_Service -Filter "Name='$($row.name)'" -OperationTimeoutSec 8
+   if($again.StartMode -eq 'Disabled' -or $again.State -ne 'Running'){throw '服务修复后状态仍异常'}
+  }
+ }
+ if($operation -eq 'restore-update-services'){Remove-Item -LiteralPath $backup -ErrorAction Stop}
+ @{success=$true;message=if($operation -eq 'restore-update-services'){'已恢复更新服务原配置。'}else{'已将被禁用的更新服务改为手动并启动，状态复检通过；原配置可恢复。更新安装结果请在 Windows 更新中复检。'};logs=($rows.name -join ', ');restart=$false}|ConvertTo-Json -Compress
+} catch {@{success=$false;message=$_.Exception.Message;logs='已保留原配置记录，可恢复；未删除更新下载或数据库。';restart=$false}|ConvertTo-Json -Compress}
+"#;
+pub async fn repair_update_services() -> Result<RepairResult, String> {
+    run_repair("update-services".into()).await
+}
+#[tauri::command]
+pub async fn restore_update_services(confirmed: bool) -> Result<RepairResult, String> {
+    if !confirmed {
+        return Err("请先确认恢复更新服务原配置".into());
+    }
+    run_repair("restore-update-services".into()).await
+}
 #[tauri::command]
 pub async fn repair_windows() -> Result<RepairResult, String> {
-    tauri::async_runtime::spawn_blocking(|| {
+    run_repair("system".into()).await
+}
+async fn run_repair(operation: String) -> Result<RepairResult, String> {
+    tauri::async_runtime::spawn_blocking(move || {
         let _lock=LOCK.try_lock().map_err(|_|"系统修复正在进行")?;
         let root=directory()?;
         // A timed-out elevated helper must not be started again while it is still running.
@@ -60,7 +115,7 @@ pub async fn repair_windows() -> Result<RepairResult, String> {
         if !owner.starts_with("S-1-5-") || !owner.chars().all(|c|c.is_ascii_digit()||c=='S'||c=='-') {return Err("当前用户标识无效".into());}
         let root64=STANDARD.encode(root.to_string_lossy().as_bytes());
         fs::write(job.join("pending"),b"pending").map_err(|e|e.to_string())?;
-        let launch=format!("$ErrorActionPreference='Stop';Start-Process -FilePath '{}' -ArgumentList '--winease-system-repair {id} {owner} {root64}' -Verb RunAs -WindowStyle Hidden -PassThru | Select-Object -ExpandProperty Id",super::network::runtime::quote(&executable.to_string_lossy()));
+        let launch=format!("$ErrorActionPreference='Stop';Start-Process -FilePath '{}' -ArgumentList '--winease-system-repair {id} {owner} {root64} {operation}' -Verb RunAs -WindowStyle Hidden -PassThru | Select-Object -ExpandProperty Id",super::network::runtime::quote(&executable.to_string_lossy()));
         let pid=match super::network::runtime::launch_detached(&root,&launch,180) {
             Ok(value)=>value,
             Err(error)=>{if !error.contains("超时") {let _=fs::remove_file(job.join("pending"));}return Err(format!("管理员授权或启动失败：{error}"));}
@@ -83,7 +138,13 @@ pub fn helper_entry() -> bool {
     if args.get(1).map(String::as_str) != Some("--winease-system-repair") {
         return false;
     }
-    if args.len() != 5 || uuid::Uuid::parse_str(&args[2]).is_err() {
+    if args.len() != 6
+        || uuid::Uuid::parse_str(&args[2]).is_err()
+        || !matches!(
+            args[5].as_str(),
+            "system" | "update-services" | "restore-update-services"
+        )
+    {
         return true;
     }
     let run = || -> Result<(), String> {
@@ -99,7 +160,17 @@ pub fn helper_entry() -> bool {
         if !job.join("pending").is_file() || !crate::cleaning::no_reparse_ancestors(&job) {
             return Err("无效修复任务".into());
         }
-        let script=format!("if([Security.Principal.WindowsIdentity]::GetCurrent().User.Value -ne '{}'){{@{{success=$false;message='请使用当前 Windows 账户授权修复';logs='';restart=$false}}|ConvertTo-Json -Compress;exit}}\n{REPAIR}",super::network::runtime::quote(&args[3]));
+        let body = if args[5] == "system" {
+            REPAIR
+        } else {
+            UPDATE_SERVICES
+        };
+        let prefix = format!(
+            "$jobRoot='{}';$operation='{}'\n",
+            super::network::runtime::quote(&root.to_string_lossy()),
+            args[5]
+        );
+        let script=format!("{prefix}if([Security.Principal.WindowsIdentity]::GetCurrent().User.Value -ne '{}'){{@{{success=$false;message='请使用当前 Windows 账户授权修复';logs='';restart=$false}}|ConvertTo-Json -Compress;exit}}\n{body}",super::network::runtime::quote(&args[3]));
         let result = super::network::runtime::run(&root, &script, 1800)
             .and_then(|raw| serde_json::from_str::<RepairResult>(&raw).map_err(|e| e.to_string()))
             .unwrap_or_else(|error| RepairResult {
@@ -132,6 +203,51 @@ mod tests {
         let body=format!("function Invoke-TestDism {{$global:LASTEXITCODE={dism_code};'fixture DISM'}}\nfunction Invoke-TestSfc {{$global:LASTEXITCODE={sfc_code};'fixture SFC'}}\n{script}");
         serde_json::from_str(&super::super::network::runtime::run(root.path(), &body, 10).unwrap())
             .unwrap()
+    }
+    #[test]
+    fn update_service_repair_and_restore_keep_original_configuration() {
+        let root = tempfile::tempdir().unwrap();
+        let body =
+            UPDATE_SERVICES.replace(r#"& "$env:windir\System32\sc.exe""#, "Invoke-FixtureSc");
+        let setup = r#"
+$global:services=@{wuauserv=@{StartMode='Disabled';State='Stopped'};BITS=@{StartMode='Manual';State='Stopped'}}
+function Test-Path {param($Path,$LiteralPath) if($Path -like 'HKLM:*'){return $false};if($LiteralPath){Microsoft.PowerShell.Management\Test-Path -LiteralPath $LiteralPath}else{Microsoft.PowerShell.Management\Test-Path $Path}}
+function Get-CimInstance {param($Class,$Filter,$OperationTimeoutSec) $name=($Filter -split "'")[1];[pscustomobject]$global:services[$name]}
+function Invoke-FixtureSc {param($cmd,$name,$start,$mode) $global:services[$name].StartMode=if($mode -eq 'disabled'){'Disabled'}else{'Manual'};$global:LASTEXITCODE=0;'fixture config'}
+function Start-Service {param($Name,$ErrorAction) $global:services[$Name].State='Running'}
+function Stop-Service {param($Name,$ErrorAction) $global:services[$Name].State='Stopped'}
+"#;
+        let script=format!("$jobRoot='{}'\n{setup}\n$operation='update-services';$first=&{{{body}}}\n$operation='restore-update-services';$second=&{{{body}}}\n@{{first=($first|ConvertFrom-Json);second=($second|ConvertFrom-Json);services=$global:services}}|ConvertTo-Json -Depth 6 -Compress",crate::network::runtime::quote(&root.path().to_string_lossy()));
+        let value: serde_json::Value =
+            serde_json::from_str(&crate::network::runtime::run(root.path(), &script, 15).unwrap())
+                .unwrap();
+        assert_eq!(value["first"]["success"], true);
+        assert_eq!(value["second"]["success"], true);
+        assert_eq!(value["services"]["wuauserv"]["StartMode"], "Disabled");
+        assert_eq!(value["services"]["wuauserv"]["State"], "Stopped");
+        assert_eq!(value["services"]["BITS"]["StartMode"], "Manual");
+        assert!(!root.path().join("update-service-backup.json").exists());
+    }
+    #[test]
+    fn service_restore_rejects_unreviewed_names_before_any_change() {
+        let root = tempfile::tempdir().unwrap();
+        fs::write(
+            root.path().join("update-service-backup.json"),
+            r#"[{"name":"WinDefend","mode":"Disabled","state":"Stopped"}]"#,
+        )
+        .unwrap();
+        let setup = r#"function Test-Path {param($Path,$LiteralPath) if($Path -like 'HKLM:*'){return $false};if($LiteralPath){Microsoft.PowerShell.Management\Test-Path -LiteralPath $LiteralPath}else{Microsoft.PowerShell.Management\Test-Path $Path}}
+function Stop-Service {throw 'unexpected mutation'}"#;
+        let script = format!(
+            "$jobRoot='{}';$operation='restore-update-services'\n{setup}\n{UPDATE_SERVICES}",
+            crate::network::runtime::quote(&root.path().to_string_lossy())
+        );
+        let result: RepairResult =
+            serde_json::from_str(&crate::network::runtime::run(root.path(), &script, 15).unwrap())
+                .unwrap();
+        assert!(!result.success);
+        assert!(result.message.contains("恢复记录无效"));
+        assert!(root.path().join("update-service-backup.json").exists());
     }
     #[test]
     fn failed_component_repair_does_not_run_system_file_check() {

@@ -1824,3 +1824,21 @@ code {
 .setting-line label { gap: 10px; }
 
 .setting-line select { max-width: 100%; padding: 8px 12px; border: 1px solid #dce0e6; border-radius: 6px; background: #fff; color: inherit; }
+
+/* Functional diagnostics use the existing spacing and accent system. */
+.community-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 12px; }
+.community-filter label { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+.community-filter input[type="search"] { width: min(100%, 360px); min-width: 180px; padding: 10px 12px; border: 1px solid #dce0e6; border-radius: 6px; background: #fff; color: inherit; font: inherit; }
+.section-head h2 { display: flex; align-items: center; gap: 10px; }
+.subnav { flex-wrap: wrap; }
+.subnav button { display: inline-flex; align-items: center; gap: 6px; }
+.subnav .check-icon { width: 18px; height: 18px; }
+.manager-row__text details { min-width: 0; font-size: 12px; }
+.manager-row__text details p { white-space: normal; overflow-wrap: anywhere; }
+.manager-row__text strong small { font-weight: 400; margin-left: 6px; }
+@media (max-width: 900px) {
+  .manager-row { flex-wrap: wrap; }
+  .manager-row__text { flex-basis: calc(100% - 54px); }
+}
+
+[hidden] { display: none !important; }

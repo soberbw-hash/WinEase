@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
+import { MaintenancePanel } from "../MaintenancePanel";
 import { windowsToolGroups } from "../content";
 import type { WindowsSetting } from "../types";
 import { CheckIcon } from "../CheckIcon";
@@ -91,7 +92,7 @@ export function SystemPage({
         { id, enabled },
       );
       await refresh();
-      setMessage(id === "autoplay" ? "设置已保存，下一次插入设备时使用。" : id === "block-suggested-apps" ? "设置已保存，后续推荐应用安装使用此配置；已有应用保留。" : "设置已保存，资源管理器已自动刷新。");
+      setMessage(id === "autoplay" ? "设置已保存，下一次插入设备时使用。" : id === "block-suggested-apps" ? "设置已保存，后续推荐应用安装使用此配置；已有应用保留。" : "设置已保存并校验；需要刷新的项目已自动刷新。");
     } catch (err) {
       setError(String(err));
     } finally {
@@ -128,6 +129,7 @@ export function SystemPage({
   }
   return (
     <div className="page-stack">
+      <MaintenancePanel/>
       <section className="surface">
         <div className="section-head">
           <h2>Windows 设置</h2>

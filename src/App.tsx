@@ -43,6 +43,8 @@ function App() {
   const [supportOpen, setSupportOpen] = useState(false);
   const [managementTab, setManagementTab] =
     useState<ManagementTab>("processes");
+  const [applicationsVisited, setApplicationsVisited] = useState(false);
+  useEffect(() => {if (activeSection === "applications") setApplicationsVisited(true);}, [activeSection]);
   const [duplicates, setDuplicates] = useState(false);
   const [fileNavigation, setFileNavigation] = useState(0);
   const [history, setHistory] = useState<ToolActionResult[]>([]);
@@ -211,6 +213,7 @@ function App() {
       [
         "open_startup",
         "open_processes",
+        "open_preinstalled",
         "open_uninstall",
         "open_popups",
       ].includes(id)
@@ -220,6 +223,7 @@ function App() {
           {
             open_startup: "startup",
             open_processes: "processes",
+            open_preinstalled: "preinstalled",
             open_uninstall: "uninstall",
             open_popups: "popups",
           } as Record<string, ManagementTab>
@@ -356,20 +360,7 @@ function App() {
           <NetworkPage onOpenTarget={(target) => void openTarget(target)} />
         );
       case "applications":
-        return (
-          <ManagementPage
-            initialTab={managementTab}
-            components={components}
-            componentBusy={Boolean(componentBusy["uninstall-plus"])}
-            onComponent={(id, installed) => {
-              void (async () => {
-                if (installed || (await manageComponent(id, "install")))
-                  await manageComponent(id, "launch");
-              })();
-            }}
-            onOpenTarget={(target) => void openTarget(target)}
-          />
-        );
+        return null;
       case "system":
         return null;
       case "components":
@@ -472,6 +463,21 @@ function App() {
             </div>
             <div hidden={activeSection !== "cleaning"}>
               <CleaningPage active={activeSection === "cleaning"} onResult={recordResult} />
+            </div>
+            <div hidden={activeSection !== "applications"}>
+              {applicationsVisited && (<ManagementPage
+            active={activeSection === "applications"}
+            initialTab={managementTab}
+            components={components}
+            componentBusy={Boolean(componentBusy["uninstall-plus"])}
+            onComponent={(id, installed) => {
+              void (async () => {
+                if (installed || (await manageComponent(id, "install")))
+                  await manageComponent(id, "launch");
+              })();
+            }}
+            onOpenTarget={(target) => void openTarget(target)}
+          />)}
             </div>
             <div hidden={activeSection !== "system"}>
               <SystemPage active={activeSection === "system"} onOpenTarget={quickAction}/>

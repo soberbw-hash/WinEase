@@ -30,6 +30,9 @@ export function HomePage({onQuickAction}: {onQuickAction: (id: string) => void})
   const cacheBytes = chosen.filter(row => row.actionLabel === "清理缓存").reduce((sum, row) => sum + row.sizeBytes, 0);
   const fileBytes = chosen.filter(row => row.actionLabel === "移到回收站").reduce((sum, row) => sum + row.sizeBytes, 0);
   const startupCount = chosen.filter(row => row.actionLabel === "关闭开机启动").length;
+  const appCount = chosen.filter(row => row.actionLabel === "卸载可选应用").length;
+  const preferenceCount = chosen.filter(row => row.actionLabel === "调整功能偏好").length;
+  const maintenanceCount = chosen.filter(row => row.actionLabel === "修复安装与更新").length;
   const networkCount = chosen.filter(row => row.actionLabel === "备份并修复").length;
   const finished = report?.sections.filter(section => section.status !== "checking").length ?? 0;
   async function check() {
@@ -106,6 +109,9 @@ export function HomePage({onQuickAction}: {onQuickAction: (id: string) => void})
   const confirmDescription = [
     cacheBytes > 0 ? `直接删除所选缓存，预计 ${formatBytes(cacheBytes)}，无法撤销。` : "",
     fileBytes > 0 ? `所选个人大文件共 ${formatBytes(fileBytes)} 将移到回收站；请确认用途。` : "",
+    appCount ? `卸载 ${appCount} 个可选应用；可能删除应用数据，恢复记录不能还原数据。` : "",
+    preferenceCount ? `调整 ${preferenceCount} 项功能偏好，保留原值用于恢复；可能刷新资源管理器。` : "",
+    maintenanceCount ? `处理 ${maintenanceCount} 项安装与更新问题，可能请求管理员授权；保留原配置或应用数据。` : "",
     startupCount ? `关闭 ${startupCount} 个应用的开机启动，可恢复。` : "",
     networkCount ? "备份并修复已勾选的网络问题，可能弹出管理员授权；如项目注明，可能短暂断网或需要重启。" : "",
   ].filter(Boolean).join(" ");

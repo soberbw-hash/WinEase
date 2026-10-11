@@ -9,6 +9,10 @@ export function CheckIcon({kind}: {kind: string}) {
     game: "M6 7h12l3 10c1 4-3 4-5 0H8c-2 4-6 4-5 0zM6 12h4M8 10v4M16 11h.01M18 13h.01",
     notifications: "M5 17h14l-2-3V9a5 5 0 0 0-10 0v5zM10 21h4",
     repair: "M14 3a6 6 0 0 0-7 7L2 17l5 5 7-7a6 6 0 0 0 7-7l-4 4-5-5z",
+    apps: "M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z",
+    preferences: "M3 6h18M3 12h18M3 18h18M8 3v6M16 9v6M10 15v6",
+    performance: "M3 20V4M3 20h18M7 16v-5M12 16V7M17 16v-8",
+    maintenance: "M14 3a6 6 0 0 0-7 7L2 17l5 5 7-7a6 6 0 0 0 7-7l-4 4-5-5z",
     startup: "M12 2v10M6 5a9 9 0 1 0 12 0",
   };
   return <span className="check-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d={paths[kind] ?? "M5 3h10l4 4v14H5zM15 3v5h4M8 12h8M8 16h6"}/></svg></span>;
