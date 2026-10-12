@@ -2,7 +2,6 @@ import { useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { MaintenancePanel } from "../MaintenancePanel";
 import { windowsToolGroups } from "../content";
-import { CheckIcon } from "../CheckIcon";
 import { ConfirmDialog } from "../ConfirmDialog";
 
 export function SystemPage({
@@ -89,10 +88,10 @@ export function SystemPage({
       </section>
       {windowsToolGroups.map(group => <section className="surface" key={group.title}>
         <div className="section-head"><h2>{group.title}</h2></div>
-        <div className="quick-path-grid">{group.items.map(item => <button
-          key={item.target} type="button" className="quick-path system-tool"
+        <div className="button-row">{group.items.map(item => <button
+          key={item.target} type="button" className="secondary-button"
           onClick={() => onOpenTarget(item.target)}>
-          <CheckIcon kind={item.target.includes("gaming") ? "game" : item.target.includes("power") ? "power" : item.target.includes("notifications") ? "notifications" : group.icon}/><div><strong>{item.label}</strong><span>{item.detail}</span></div><span aria-hidden="true">↗</span>
+          {item.label}
         </button>)}</div>
       </section>)}
       <ConfirmDialog

@@ -15,6 +15,7 @@ pub fn network_helper_entry() -> bool {
 mod popups;
 mod recycle;
 mod windows_settings;
+mod presets;
 use encoding_rs::GBK;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -2130,6 +2131,8 @@ pub fn run() {
             optimization::open_health_tool,
             management::get_power_plan,
             management::set_power_plan,
+            presets::get_optimization_presets,
+            presets::set_optimization_preset,
             management::repair_taskbar,
             system_repair::repair_windows,
             file_management::personal_folders,

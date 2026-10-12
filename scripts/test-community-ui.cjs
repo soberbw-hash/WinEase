@@ -11,7 +11,7 @@ async (page) => {
       ...['files','health','network','startup'].map(id=>({id,title:id,status:'complete',summary:'检查完成',items:[]})),
       {id:'performance',title:'启动与后台分析',status:'complete',summary:'6 秒采样',items:[item('cpu','chrome',{selectable:false,detail:'2 个进程，平均 CPU 18%',target:'open_processes'})]},
       {id:'maintenance',title:'更新与应用安装',status:'complete',summary:'服务',items:[item('maint','更新服务异常',{actionLabel:'修复安装与更新'})]},
-      {id:'preferences',title:'功能偏好',status:'complete',summary:'保留偏好',items:[item('pref','减少系统使用建议',{actionLabel:'调整功能偏好'})]},
+      {id:'preferences',title:'功能偏好',status:'complete',summary:'保留偏好',items:[item('pref','减少系统使用建议',{actionLabel:'应用优化设置'})]},
       {id:'apps',title:'预装应用',status:'complete',summary:'默认保留',items:[item('app','Microsoft 天气',{actionLabel:'卸载可选应用'})]},
     ]};
     window.__TAURI_INTERNALS__={transformCallback:()=>++cb,unregisterCallback:()=>{},invoke:async(cmd,args)=>{

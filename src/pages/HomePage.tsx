@@ -33,7 +33,7 @@ export function HomePage({onQuickAction}: {onQuickAction: (id: string) => void})
   const fileBytes = chosen.filter(row => row.actionLabel === "移到回收站").reduce((sum, row) => sum + row.sizeBytes, 0);
   const startupCount = chosen.filter(row => row.actionLabel === "关闭开机启动").length;
   const appCount = chosen.filter(row => row.actionLabel === "卸载可选应用").length;
-  const preferenceCount = chosen.filter(row => row.actionLabel === "调整功能偏好").length;
+  const preferenceCount = chosen.filter(row => row.actionLabel === "应用优化设置").length;
   const maintenanceCount = chosen.filter(row => row.actionLabel === "修复安装与更新").length;
   const networkCount = chosen.filter(row => row.actionLabel === "备份并修复").length;
   const finished = report?.sections.filter(section => section.status !== "checking").length ?? 0;
@@ -112,7 +112,7 @@ export function HomePage({onQuickAction}: {onQuickAction: (id: string) => void})
     cacheBytes > 0 ? `直接删除所选缓存，预计 ${formatBytes(cacheBytes)}，无法撤销。` : "",
     fileBytes > 0 ? `所选个人大文件共 ${formatBytes(fileBytes)} 将移到回收站；请确认用途。` : "",
     appCount ? `卸载 ${appCount} 个可选应用；可能删除应用数据，恢复记录不能还原数据。` : "",
-    preferenceCount ? `调整 ${preferenceCount} 项功能偏好，保留原值用于恢复；可能刷新资源管理器。` : "",
+    preferenceCount ? `应用 ${preferenceCount} 项优化设置，保留原值用于恢复；可能请求管理员授权、刷新资源管理器，关闭通知和录制、增加电源耗电或暂停定期磁盘维护。具体范围见所选项目。` : "",
     maintenanceCount ? `处理 ${maintenanceCount} 项安装与更新问题，可能请求管理员授权；保留原配置或应用数据。` : "",
     startupCount ? `关闭 ${startupCount} 个应用的开机启动，可恢复。` : "",
     networkCount ? "备份并修复已勾选的网络问题，可能弹出管理员授权；如项目注明，可能短暂断网或需要重启。" : "",
@@ -124,16 +124,13 @@ export function HomePage({onQuickAction}: {onQuickAction: (id: string) => void})
       <h2>检查与优化</h2>
       <p>清理 · 空间 · 体检 · 网络 · 开机</p>
       <button className="primary-button optimization-primary" disabled={flow.submitting} onClick={() => void check()}>{flow.submitting ? "开始检查…" : "一键检查"}</button>
-      <small>先检查，再确认优化</small>
-      <a href="#optimization-settings">优化设置 ↓</a>
     </section> : <>
       <section className="surface optimization-summary" aria-label="检查概览">
         <div className="optimization-summary__top"><div>
           <h2>{report.phase === "checking" ? "正在检查" : report.phase === "optimizing" ? "正在优化" : report.phase === "complete" ? "优化结果" : report.phase === "expired" ? "检查结果已过期" : "检查结果"}</h2>
           <p aria-live="polite">{report.phase === "checking" ? `${finished} / ${report.sections.length} 项检查已完成` : report.phase === "optimizing" ? `${report.completedActions} / ${report.totalActions} 项已处理` : report.phase === "complete" ? `${report.completedActions} 项已处理 · ${report.outcomes.filter(result => result.status === "failed").length} 项操作未完整完成` : report.phase === "expired" ? "重新检查后可继续优化" : chosen.length ? `已选 ${chosen.length} 项${cacheBytes > 0 ? ` · 缓存 ${formatBytes(cacheBytes)}` : ""}${fileBytes > 0 ? ` · 大文件 ${formatBytes(fileBytes)}` : ""}` : "暂无已选优化项，可查看下方建议"}</p>
         </div><div className="button-row">
-          <a href="#optimization-settings">优化设置 ↓</a>
-          {report.phase === "ready" && <button className="ghost-button" disabled={flow.submitting} onClick={flow.recommendations}>使用建议项</button>}
+              {report.phase === "ready" && <button className="ghost-button" disabled={flow.submitting} onClick={flow.recommendations}>使用建议项</button>}
           <button className="secondary-button" disabled={busy} onClick={() => void check()}>重新检查</button>
           {report.phase !== "complete" && report.phase !== "expired" && <button className="primary-button optimization-primary" disabled={busy || report.phase !== "ready" || settingsChanged || !chosen.length} onClick={() => setConfirm(true)}>{report.phase === "optimizing" ? "优化中…" : "一键优化"}</button>}
         </div></div>
@@ -144,7 +141,9 @@ export function HomePage({onQuickAction}: {onQuickAction: (id: string) => void})
       {report.sections.map(renderSection)}
     </>}
     {settingsChanged && report?.phase === "ready" && <p className="scope-note" role="status">设置已更改，重新检查后可执行建议项。</p>}
+    <details className="surface optimization-options" id="optimization-settings"><summary>优化设置</summary>
     <OptimizationSettings disabled={!!busy} revision={report?.phase === "complete" ? `${report.id}:${report.revision}` : undefined} onChanged={() => setSettingsChanged(true)}/>
+    </details>
     <ConfirmDialog open={confirm} title={`优化已选的 ${chosen.length} 个项目？`} description={confirmDescription} confirmLabel="确认并优化" onCancel={() => setConfirm(false)} onConfirm={() => {setConfirm(false); void flow.optimize();}}/>
   </div>;
 }

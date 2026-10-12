@@ -94,9 +94,9 @@ pub async fn restore_update_services(confirmed: bool) -> Result<RepairResult, St
 pub async fn repair_windows() -> Result<RepairResult, String> {
     run_repair("system".into()).await
 }
-async fn run_repair(operation: String) -> Result<RepairResult, String> {
+pub(crate) async fn run_repair(operation: String) -> Result<RepairResult, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let _lock=LOCK.try_lock().map_err(|_|"系统修复正在进行")?;
+        let _lock=LOCK.lock().map_err(|_|"系统维护状态异常")?;
         let root=directory()?;
         // A timed-out elevated helper must not be started again while it is still running.
         for entry in fs::read_dir(&root).map_err(|e|e.to_string())?.flatten() {
@@ -140,10 +140,11 @@ pub fn helper_entry() -> bool {
     }
     if args.len() != 6
         || uuid::Uuid::parse_str(&args[2]).is_err()
-        || !matches!(
-            args[5].as_str(),
-            "system" | "update-services" | "restore-update-services"
-        )
+        || !(crate::presets::valid_operation(&args[5])
+            || matches!(
+                args[5].as_str(),
+                "system" | "update-services" | "restore-update-services"
+            ))
     {
         return true;
     }
@@ -160,10 +161,12 @@ pub fn helper_entry() -> bool {
         if !job.join("pending").is_file() || !crate::cleaning::no_reparse_ancestors(&job) {
             return Err("无效修复任务".into());
         }
-        let body = if args[5] == "system" {
-            REPAIR
+        let body = if crate::presets::valid_operation(&args[5]) {
+            crate::presets::helper_script(&args[5])?
+        } else if args[5] == "system" {
+            REPAIR.to_string()
         } else {
-            UPDATE_SERVICES
+            UPDATE_SERVICES.to_string()
         };
         let prefix = format!(
             "$jobRoot='{}';$operation='{}'\n",

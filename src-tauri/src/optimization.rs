@@ -1,6 +1,6 @@
 //! One reviewed plan owns its evidence, cache/file tokens and executable actions.
 //! The renderer sends only IDs from this plan; it cannot supply paths or commands.
-use crate::{cleaning, community, file_management, health, management, network, windows_settings};
+use crate::{cleaning, community, file_management, health, management, network, presets};
 use serde::Serialize;
 use std::{
     collections::{BTreeMap, HashSet},
@@ -828,49 +828,30 @@ async fn scan_maintenance() -> Result<Findings, String> {
     })
 }
 async fn scan_preferences() -> Result<Findings, String> {
-    let settings = windows_settings::get_windows_settings().await?;
+    let settings = presets::get_optimization_presets().await?;
     let mut items = Vec::new();
     let mut actions = BTreeMap::new();
-    for setting in settings.into_iter().filter(|s| {
-        matches!(
-            s.id,
-            "block-suggested-apps"
-                | "reduce-explorer-promotions"
-                | "local-search"
-                | "reduce-tips"
-                | "disable-background-recording"
-        )
-    }) {
+    for setting in settings {
         let mut row = item(
             format!("preference-{}", setting.id),
             setting.label,
-            format!(
-                "{} {}",
-                setting.description,
-                if setting.enabled == Some(true) {
-                    "已开启此偏好。"
-                } else {
-                    "可选偏好，不是故障；选择后开启，原值可恢复。"
-                }
-            ),
+            setting.error.clone().unwrap_or(setting.description),
             if setting.error.is_some() {
                 "unknown"
             } else if setting.enabled == Some(true) {
                 "info"
             } else {
-                "optional"
+                "recommended"
             },
         );
         row.target = Some("open_home".into());
-        row.icon_kind = "system".into();
-        if let Some(error) = setting.error {
-            row.detail = error;
-        } else if setting.enabled != Some(true) {
-            enable(&mut row, "调整功能偏好", false);
+        row.icon_kind = "preferences".into();
+        if setting.error.is_none() && setting.enabled != Some(true) {
+            enable(&mut row, "应用优化设置", true);
             actions.insert(
                 row.id.clone(),
                 Action::Preference {
-                    id: setting.id.into(),
+                    id: setting.id,
                     expected: setting.enabled,
                 },
             );
@@ -878,7 +859,7 @@ async fn scan_preferences() -> Result<Findings, String> {
         items.push(row);
     }
     Ok(Findings {
-        summary: "推广、本地搜索和后台录制；保留原偏好，按需勾选。".into(),
+        summary: "检查各项优化配置，确认后应用建议；优化前配置可恢复。".into(),
         items,
         actions,
     })
@@ -1062,28 +1043,49 @@ async fn apply_actions(
             .map(|_| format!("已关闭 {name} 的开机启动，可在开机管理中恢复。"));
         outcome(core, id, vec![item], "开机优化", result);
     }
-    for (item, setting, expected) in preferences {
-        let result = async {
-            let rows = windows_settings::get_windows_settings().await?;
-            let current = rows
-                .iter()
-                .find(|r| r.id == setting)
-                .ok_or("偏好项目已变化")?;
-            if current.error.is_some() || current.enabled != expected {
-                return Err("偏好配置已变化或读取失败，请重新检查".into());
+    if !preferences.is_empty() {
+        match presets::get_optimization_presets().await {
+            Err(error) => {
+                for (item, _, _) in preferences {
+                    outcome(core, id, vec![item], "优化设置", Err(error.clone()));
+                }
             }
-            windows_settings::set_windows_setting(setting.clone(), true).await?;
-            let verify = windows_settings::get_windows_settings().await?;
-            if !verify
-                .iter()
-                .any(|r| r.id == setting && r.enabled == Some(true) && r.error.is_none())
-            {
-                return Err("配置复检失败，备份保留".into());
+            Ok(current) => {
+                let mut eligible = Vec::new();
+                for (item, setting, expected) in preferences {
+                    if current
+                        .iter()
+                        .any(|r| r.id == setting && r.error.is_none() && r.enabled == expected)
+                    {
+                        eligible.push((item, setting));
+                    } else {
+                        outcome(
+                            core,
+                            id,
+                            vec![item],
+                            "优化设置",
+                            Err("配置已变化或读取失败，请重新检查".into()),
+                        );
+                    }
+                }
+                if !eligible.is_empty() {
+                    let results =
+                        presets::apply_bundle(eligible.iter().map(|(_, id)| id.clone()).collect())
+                            .await;
+                    for (item, setting) in eligible {
+                        let result = match &results {
+                            Err(error) => Err(error.clone()),
+                            Ok(rows) => match rows.iter().find(|r| r.id == setting) {
+                                Some(r) if r.success => Ok(r.message.clone()),
+                                Some(r) => Err(r.message.clone()),
+                                None => Err("未收到该项执行结果；备份保留".into()),
+                            },
+                        };
+                        outcome(core, id, vec![item], "优化设置", result);
+                    }
+                }
             }
-            Ok("偏好已保存并复检，原值可在系统工具恢复；系统版本或策略可能限制实际效果。".into())
         }
-        .await;
-        outcome(core, id, vec![item], "功能偏好", result);
     }
     for (item, action) in maintenance {
         let result = community::repair_maintenance(action, true).await;

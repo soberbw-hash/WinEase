@@ -1845,6 +1845,10 @@ code {
 .optimization-setting { align-items: center; gap: 16px; }
 .optimization-setting__text { flex: 1; min-width: 0; }
 .optimization-setting__controls { display: flex; align-items: center; justify-content: flex-end; gap: 12px; }
+.optimization-options > summary { font-size: 16px; font-weight: 600; cursor: pointer; }
+.optimization-options__body { padding-top: 20px; }
+.optimization-options__body .section-head h2 { font-size: 14px; }
+.optimization-options__body .section-head { justify-content: flex-end; }
 @media(max-width:760px) {
   .optimization-setting { flex-wrap: wrap; }
   .optimization-setting__text { flex-basis: 100%; }

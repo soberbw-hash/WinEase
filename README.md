@@ -61,4 +61,6 @@ npm run tauri build -- --bundles nsis
 
 设计与验证说明见 [优化审查](docs/optimization-review.md)。
 
-社区调优的取舍与新增实现见 [调研记录](docs/community-optimization-research.md) 和 [实现记录](docs/community-implementation.md)。预装应用、功能偏好和维护操作默认保留，由用户查看证据并选择后确认执行。
+社区调优的取舍与新增实现见 [调研记录](docs/community-optimization-research.md) 和 [实现记录](docs/community-implementation.md)。预装应用和维护操作默认保留，由用户查看证据并选择后确认执行。
+
+最新 [一键优化配置组](docs/optimization-presets.md) 将 11 组可用配置纳入默认优化建议，检查后确认执行；优化设置默认收起，开关关闭恢复优化前。预装应用与维护操作仍按各自确认规则处理。
