@@ -15,7 +15,7 @@ async (page) => {
   if(await page.getByRole('button',{name:/默认应用/}).count()!==1)throw Error('Duplicate default-app management');
   await page.getByRole('button',{name:/设备与驱动/}).click();if(!await page.evaluate(()=>window.calls.some(c=>c.cmd==='open_health_tool'&&c.args.tool==='open_devices')))throw Error('Device diagnostic route wrong');
   await page.getByRole('button',{name:'检查并修复',exact:true}).click();await page.getByRole('button',{name:'修复中…',exact:true}).waitFor();
-  await nav.getByRole('button',{name:'一键优化',exact:true}).click();await page.locator('.optimization-options > summary').click();
+  await nav.getByRole('button',{name:'一键优化',exact:true}).click();await page.getByRole('button',{name:'优化设置',exact:true}).click();
   if(await page.getByRole('switch',{name:'关闭广告与推荐',exact:true}).isDisabled())throw Error('System repair blocks unrelated setting');
   await page.evaluate(()=>window.finishRepair());await nav.getByRole('button',{name:'系统工具',exact:true}).click();await page.getByText('夹具修复完成',{exact:true}).waitFor();
   if(await page.evaluate(()=>window.calls.filter(c=>c.cmd==='repair_windows').length)!==1)throw Error('Repair restarted across navigation');

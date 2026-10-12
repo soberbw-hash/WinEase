@@ -89,6 +89,7 @@ export type ComponentBusyState = {
 };
 
 export type ComponentManifest = {
+  updateError?: string | null;
   updateAvailable?: boolean;
   availableVersion?: string | null;
   id: string;

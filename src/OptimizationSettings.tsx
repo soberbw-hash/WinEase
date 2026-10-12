@@ -33,7 +33,7 @@ export function OptimizationSettings({disabled = false, revision, onChanged}: {
       <button className="ghost-button" disabled={pending.length > 0} onClick={() => void refresh()}>刷新状态</button></div>
     {errors.settings && <p className="inline-error" role="alert">{errors.settings}</p>}
     {!settings.length && !errors.settings && <p className="scope-note">{isTauri() ? "读取设置中…" : "请在桌面应用中读取设置"}</p>}
-    {settings.map(item => <div className="setting-line optimization-setting" key={item.id}>
+    <div className="optimization-settings-grid">{settings.map(item => <div className="setting-line optimization-setting" key={item.id}>
       <div className="optimization-setting__text"><strong>{item.label}</strong><small className="setting-description">{item.description}</small>
         {item.enabled === true && !item.canRestore && <small className="setting-description">已由系统或其他工具设置，关闭使用默认方案</small>}
         {(item.error || errors[item.id]) && <small className="inline-error" role="alert">{item.error || errors[item.id]}</small>}</div>
@@ -42,6 +42,6 @@ export function OptimizationSettings({disabled = false, revision, onChanged}: {
         state={pending.includes(item.id) ? "处理中" : item.error ? "未核实" : item.enabled === null ? "未核实" : item.enabled ? "已优化" : "未优化"}
         disabled={disabled || pending.includes(item.id) || !!item.error} onChange={enabled => void change(item.id, enabled)}/>
       </div>
-    </div>)}
+    </div>)}</div>
   </section>;
 }

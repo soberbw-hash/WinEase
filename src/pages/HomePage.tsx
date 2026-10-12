@@ -13,6 +13,8 @@ const labels: Record<string, string> = {recommended: "建议优化", optional: "
 export function HomePage({onQuickAction}: {onQuickAction: (id: string) => void}) {
   const flow = useOptimization();
   const {report, selected} = flow;
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsPanel = useRef<HTMLElement>(null);
   const [settingsChanged, setSettingsChanged] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const [expanded, setExpanded] = useState<string[]>([]);
@@ -39,7 +41,7 @@ export function HomePage({onQuickAction}: {onQuickAction: (id: string) => void})
   const finished = report?.sections.filter(section => section.status !== "checking").length ?? 0;
   async function check() {
     if (busy) return;
-    setExpanded([]); setDetails({}); setDetailErrors({}); setLoading([]); setVisible({}); setSearch("");
+    setSettingsOpen(false); setExpanded([]); setDetails({}); setDetailErrors({}); setLoading([]); setVisible({}); setSearch("");
     setSettingsChanged(false); await flow.check();
   }
   async function files(row: OptimizationItem, offset = 0) {
@@ -95,18 +97,18 @@ export function HomePage({onQuickAction}: {onQuickAction: (id: string) => void})
     const main = section.items.filter(row => !["healthy", "info"].includes(row.status));
     const retained = section.items.filter(row => ["healthy", "info"].includes(row.status));
     const filtered = section.id === "files" && search.trim() ? main.filter(row => `${row.title} ${row.detail}`.toLowerCase().includes(search.trim().toLowerCase())) : main;
-    const count = visible[section.id] ?? 30;
-    return <section className="surface optimization-section" id={`check-${section.id}`} key={section.id} aria-labelledby={`heading-${section.id}`}>
-      <div className="section-head"><div className="optimization-section__title"><CheckIcon kind={section.id}/><h2 id={`heading-${section.id}`}>{section.title}</h2></div><span className="pill">{section.status === "checking" ? "检查中" : section.status === "error" ? "未完成" : `${section.items.length} 项`}</span></div>
+    const count = visible[section.id] ?? 10;
+    return <details className="surface optimization-section" id={`check-${section.id}`} key={section.id} aria-labelledby={`heading-${section.id}`}>
+      <summary className="section-head"><div className="optimization-section__title"><CheckIcon kind={section.id}/><h2 id={`heading-${section.id}`}>{section.title}</h2></div><span className="pill">{section.status === "checking" ? "检查中" : section.status === "error" ? "未完成" : `${section.items.length} 项 · 已选 ${section.items.filter(row => selection.has(row.id)).length}`}</span></summary>
       <p className={section.status === "error" ? "inline-error" : "scope-note"}>{section.summary}</p>
       {section.status === "checking" && <div className="optimization-skeleton" role="status">正在读取{section.title}…</div>}
       {section.id === "files" && section.items.length > 0 && <input className="management-search" aria-label="搜索大文件" placeholder="搜索文件名或路径" value={search} onChange={event => setSearch(event.target.value)}/>}
       {filtered.slice(0, count).map(row => renderItem(row, section.id))}
-      {filtered.length > count && <button className="secondary-button" onClick={() => setVisible(current => ({...current, [section.id]: count + 50}))}>显示更多（{count}/{filtered.length}）</button>}
+      {filtered.length > count && <button className="secondary-button" onClick={() => setVisible(current => ({...current, [section.id]: count + 10}))}>显示更多（{count}/{filtered.length}）</button>}
       {retained.length > 0 && <details className="optimization-retained"><summary>正常与保留项目 · {retained.length} 项</summary>{retained.map(row => renderItem(row, section.id))}</details>}
       {section.id === "cleaning" && section.status === "complete" && <button className="ghost-button" onClick={() => onQuickAction("ms-settings:storagesense")}>Windows 更新及系统清理 ↗</button>}
       {section.id === "startup" && section.status === "complete" && <p className="scope-note">关闭的启动项可在开机管理中恢复；不会结束正在运行的应用。</p>}
-    </section>;
+    </details>;
   }
   const confirmDescription = [
     cacheBytes > 0 ? `直接删除所选缓存，预计 ${formatBytes(cacheBytes)}，无法撤销。` : "",
@@ -117,6 +119,13 @@ export function HomePage({onQuickAction}: {onQuickAction: (id: string) => void})
     startupCount ? `关闭 ${startupCount} 个应用的开机启动，可恢复。` : "",
     networkCount ? "备份并修复已勾选的网络问题，可能弹出管理员授权；如项目注明，可能短暂断网或需要重启。" : "",
   ].filter(Boolean).join(" ");
+  const settingsControl = <section className="surface optimization-options" id="optimization-settings" ref={settingsPanel}>
+    <button className="optimization-options-trigger" type="button" aria-expanded={settingsOpen} aria-controls="optimization-settings-body" onClick={() => {
+      const next = !settingsOpen; setSettingsOpen(next);
+      if(next) requestAnimationFrame(() => settingsPanel.current?.scrollIntoView({behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth',block:'start'}));
+    }}>优化设置<svg viewBox="0 0 24 24" aria-hidden="true"><path d={settingsOpen ? 'M6 15l6-6 6 6' : 'M6 9l6 6 6-6'} fill="none" stroke="currentColor" strokeWidth="2"/></svg></button>
+    <div id="optimization-settings-body" hidden={!settingsOpen}><OptimizationSettings disabled={!!busy} revision={report?.phase === 'complete' ? `${report.id}:${report.revision}` : undefined} onChanged={() => setSettingsChanged(true)}/></div>
+  </section>;
   return <div className="page-stack optimization-home">
     {flow.error && <p className="inline-error" role="alert">{flow.error}</p>}
     {!report ? <section className="surface optimization-welcome">
@@ -134,16 +143,15 @@ export function HomePage({onQuickAction}: {onQuickAction: (id: string) => void})
           <button className="secondary-button" disabled={busy} onClick={() => void check()}>重新检查</button>
           {report.phase !== "complete" && report.phase !== "expired" && <button className="primary-button optimization-primary" disabled={busy || report.phase !== "ready" || settingsChanged || !chosen.length} onClick={() => setConfirm(true)}>{report.phase === "optimizing" ? "优化中…" : "一键优化"}</button>}
         </div></div>
-        <div className="optimization-stages">{report.sections.map(section => <a href={`#check-${section.id}`} key={section.id}><CheckIcon kind={section.id}/><span>{section.title}</span><small>{section.status === "checking" ? "检查中" : section.status === "error" ? "未完成" : "已检查"}</small></a>)}</div>
+        <div className="optimization-stages">{report.sections.map(section => <a href={`#check-${section.id}`} key={section.id} onClick={() => { const panel = document.getElementById(`check-${section.id}`); if (panel instanceof HTMLDetailsElement) panel.open = true; }}><CheckIcon kind={section.id}/><span>{section.title}</span><small>{section.status === "checking" ? "检查中" : section.status === "error" ? "未完成" : "已检查"}</small></a>)}</div>
         {(report.phase === "checking" || report.phase === "optimizing") && <progress aria-label={report.phase === "checking" ? "检查进度" : "优化进度"} max={report.phase === "checking" ? report.sections.length : report.totalActions || 1} value={report.phase === "checking" ? finished : report.completedActions}/>}
       </section>
+      {settingsControl}
       {report.outcomes.length > 0 && <section className="surface" aria-label="执行结果"><h2>本次处理</h2>{report.outcomes.map((result,index) => <div className="optimization-outcome" key={index}><strong>{result.title}</strong><p className={result.status === "failed" ? "inline-error" : "optimization-success"}>{result.message}</p></div>)}</section>}
       {report.sections.map(renderSection)}
     </>}
+    {!report && settingsControl}
     {settingsChanged && report?.phase === "ready" && <p className="scope-note" role="status">设置已更改，重新检查后可执行建议项。</p>}
-    <details className="surface optimization-options" id="optimization-settings"><summary>优化设置</summary>
-    <OptimizationSettings disabled={!!busy} revision={report?.phase === "complete" ? `${report.id}:${report.revision}` : undefined} onChanged={() => setSettingsChanged(true)}/>
-    </details>
     <ConfirmDialog open={confirm} title={`优化已选的 ${chosen.length} 个项目？`} description={confirmDescription} confirmLabel="确认并优化" onCancel={() => setConfirm(false)} onConfirm={() => {setConfirm(false); void flow.optimize();}}/>
   </div>;
 }

@@ -4,7 +4,7 @@ import { ConfirmDialog } from "../ConfirmDialog";
 import { formatBytes } from "../format";
 
 import { ApplicationIcon } from "../ApplicationIcon";
-import { buildCleaningTree, type CleaningNode } from "../cleaningTree";
+import { buildCleaningTree, cleaningDescription, type CleaningNode } from "../cleaningTree";
 import type { CleaningScan, ToolActionResult } from "../types";
 
 function SelectionCheck({
@@ -201,6 +201,7 @@ export function CleaningPage({
           </button>
           <span className="tabular">{formatBytes(item.sizeBytes)}</span>
         </div>
+        {!software && <p className="cleanup-kind-description">{cleaningDescription(item.label)}</p>}
         {software ? (
           open && (
             <div className="cleanup-kinds" id={`files-${item.id}`}>
@@ -375,7 +376,7 @@ export function CleaningPage({
           </button>
         </div>
         <p className="scope-note">
-          网页、应用与图形缓存保留最近 24 小时；临时文件与错误报告保留最近 7
+          缓存是网页和软件生成的临时数据，日志与错误报告用于排查故障。网页、应用与图形缓存保留最近 24 小时；临时文件与错误报告保留最近 7
           天。保留登录信息与个人文件。
         </p>
         {error && (

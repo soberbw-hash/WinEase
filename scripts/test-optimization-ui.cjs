@@ -39,6 +39,7 @@ async (page) => {
   await page.getByRole('button',{name:'一键检查',exact:true}).click();
   await page.getByRole('heading',{name:'正在检查',exact:true}).waitFor();
   if(!await page.getByRole('region',{name:'检查概览'}).getByRole('button',{name:'一键优化',exact:true}).isDisabled())throw Error('Allowed apply while checking');
+  await page.locator('#check-cleaning > summary').click();await page.locator('#check-files > summary').click();await page.locator('#check-startup > summary').click();
   await page.evaluate(()=>window.partial());
   await page.getByRole('checkbox',{name:'选择 Chrome · 网页缓存',exact:true}).waitFor();
   if(!await page.getByRole('checkbox',{name:'选择 Chrome · 网页缓存',exact:true}).isChecked())throw Error('Recommended cache not selected');

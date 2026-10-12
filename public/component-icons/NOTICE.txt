@@ -1,0 +1,15 @@
+WinEase uses unmodified upstream icons to identify optional third-party components.
+
+Piik — TNTcraftHIM and contributors, MIT
+Icon source: https://github.com/TNTcraftHIM/Piik/blob/main/public/favicon.svg
+License: LICENSE-Piik.txt
+
+RustDesk — RustDesk contributors, AGPL-3.0
+Icon source: https://github.com/rustdesk/rustdesk/blob/master/flutter/assets/icon.svg
+License: LICENSE-RustDesk.txt
+
+LocalSend — LocalSend contributors, Apache-2.0
+Icon source: https://github.com/localsend/localsend/blob/main/app/assets/img/logo-128.png
+License: LICENSE-LocalSend.txt
+
+The programs themselves are obtained from their publishers on user request.

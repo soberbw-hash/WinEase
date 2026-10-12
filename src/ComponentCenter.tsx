@@ -115,6 +115,7 @@ export function ComponentCenter({
                   </div>
                 ) : null}
 
+                {item.updateError && <small title={item.updateError}>更新状态未核实</small>}
                 <div className="button-row">
                   <button
                     className={

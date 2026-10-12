@@ -9,6 +9,9 @@ const componentIconMap: Record<string, string> = {
   "powertoys-suite": "/component-icons/powertoys.svg",
   "file-converter": "/component-icons/file-converter.svg",
   "koodo-reader": "/component-icons/koodo-reader.ico",
+  "piik-share": "/component-icons/piik.svg",
+  "rustdesk-remote": "/component-icons/rustdesk.svg",
+  "localsend": "/component-icons/localsend.png",
 };
 
 export function getComponentIconPath(componentId: string) {

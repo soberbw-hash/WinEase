@@ -1,4 +1,13 @@
 import type { CleaningGroup } from "./types";
+export function cleaningDescription(label: string) {
+  if (/代码缓存/.test(label)) return "浏览器或软件预编译的代码，清理后会重新生成。";
+  if (/网页|浏览器|Internet/.test(label)) return "网站图片和页面的临时副本；不是密码或登录记录。";
+  if (/图形|缩略图|着色器/.test(label)) return "图片预览或游戏绘图缓存；重建时可能暂时变慢。";
+  if (/日志|报告|转储/.test(label)) return "软件运行与出错记录，删除后会减少历史排错信息。";
+  if (/下载缓存|Yarn|npm|包缓存/.test(label)) return "可重新下载的安装或开发缓存；下次使用可能需要联网。";
+  if (/临时/.test(label)) return "程序处理任务留下的临时文件，保留近期和正在使用的内容。";
+  return "软件运行时生成的缓存，清理后按需重建；个人文件保留。";
+}
 export type CleaningNode = {
   id: string;
   label: string;

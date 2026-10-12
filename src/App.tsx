@@ -283,7 +283,7 @@ function App() {
       checking = true;
       try {
         const rows = await invoke<
-          Array<{ id: string; available: boolean; version: string | null }>
+          Array<{ id: string; available: boolean; version: string | null; error?: string | null }>
         >("check_component_updates");
         if (!cancelled)
           setComponents((items) =>
@@ -294,6 +294,7 @@ function App() {
                     ...item,
                     updateAvailable: row.available,
                     availableVersion: row.version,
+                    updateError: row.error,
                   }
                 : item;
             }),

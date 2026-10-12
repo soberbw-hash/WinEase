@@ -4,7 +4,7 @@
 
 ## 行为
 
-11 组实际配置统一读取。开表示目标配置已符合优化组，关表示尚未完整符合；未能核实显示错误并禁止执行。首次优化前保存原值、类型或缺失状态；关闭开关恢复该记录。已经由其他工具配置、且没有 WinEase 原记录时，无法推断更早的历史：界面明确提示关闭使用默认方案，首次观察值另行保留。电源回到平衡计划、磁盘维护恢复启用，注册表组使用定义的非优化值；之后反复开关沿用保存的基线，不会卡在开启状态。
+16 组实际配置统一读取。开表示目标配置已符合优化组，关表示尚未完整符合；未能核实显示错误并禁止执行。首次优化前保存原值、类型或缺失状态；关闭开关恢复该记录。已经由其他工具配置、且没有 WinEase 原记录时，无法推断更早的历史：界面明确提示关闭使用默认方案，首次观察值另行保留。电源回到平衡计划、磁盘维护恢复启用，注册表组使用定义的非优化值；之后反复开关沿用保存的基线，不会卡在开启状态。
 
 首页检查会默认选择可读取且未完成的优化组，已完成的只展示。检查不修改系统；确认优化后只执行有效计划所选项。需要管理员权限的配置组合并为一次 UAC 请求，按组记录成功/失败。某组失败不掩盖其他结果；组内写入失败尝试回退本次变更，原配置记录保留。资源管理器相关配置在保存后自动刷新；部分应用配置在应用下次启动或重新登录后生效。
 
@@ -25,6 +25,11 @@
 | 高性能 | 优先使用本机已存在的卓越性能，其次标准高性能；不修改现代待机配置、不强行创建计划。关闭恢复首次保存的电源计划。 |
 | 搜索仅显示本地内容 | 设置 DisableSearchBoxSuggestions，自动刷新资源管理器。 |
 | 关闭移动设备自动播放 | 设置 DisableAutoplay，下一次插入设备使用新配置。 |
+| 关闭活动历史上传 | 关闭 PublishUserActivities 与 UploadUserActivities，不停用本地剪贴板历史。 |
+| 关闭输入个性化收集 | 关闭 TIPC、键入/手写个性化及通讯录训练数据收集。 |
+| 关闭在线语音识别 | 关闭 HasAccepted 授权，需要联网的语音输入不可用。 |
+| 关闭 Edge 后台驻留 | 关闭 StartupBoostEnabled 与 BackgroundModeEnabled。 |
+| 减少 Edge 推广 | 关闭 ShowRecommendationsEnabled 与 PersonalizationReportingEnabled；效果受浏览器版本和账号类型影响。 |
 
 设备加入组织域或检测到实际 MDM 管理证据时，机器级组停止操作。Windows 普通内置 EnrollmentState 记录本身不等于 MDM。读取管理状态失败时保守处理。配置组 ID、注册表位置、计划任务与执行命令固定，恢复文件必须匹配原配置结构；界面不能传入新命令、路径或任务名称。
 
@@ -41,3 +46,5 @@
 - [传递优化说明](https://learn.microsoft.com/en-us/windows/deployment/do/waas-delivery-optimization-faq)：下载模式 0 关闭对等共享。
 - [Storage Policy CSP](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-storage)：存储感知策略及 0 阈值保护；同时核对本机 StorageSense.admx 的实际值名称。
 - [Win11Debloat 功能与配置](https://github.com/Raphire/Win11Debloat/wiki/Features)：Windows 推广与推荐规则参考；未复制或执行其脚本。
+
+2026-10-13 补充验证与社区资料见 [体验与组件记录](experience-and-components.md)。

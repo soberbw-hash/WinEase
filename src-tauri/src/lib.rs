@@ -1,21 +1,22 @@
 mod application_icons;
 mod cleaning;
+mod community;
 mod component_launcher;
 mod component_updates;
 mod file_management;
 mod health;
 mod management;
-mod community;
 mod network;
 mod optimization;
 mod system_repair;
 pub fn network_helper_entry() -> bool {
     network::helper_entry() || system_repair::helper_entry()
 }
+mod github_components;
 mod popups;
+mod presets;
 mod recycle;
 mod windows_settings;
-mod presets;
 use encoding_rs::GBK;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -982,6 +983,89 @@ fn component_definitions_internal() -> Vec<ComponentDefinition> {
         ),
     ];
 
+    for (id, name, description, repo, license) in [
+        (
+            "piik-share",
+            "Piik 屏幕共享",
+            "免费私密屏幕分享，朋友通过浏览器观看。",
+            "TNTcraftHIM/Piik",
+            "MIT",
+        ),
+        (
+            "rustdesk-remote",
+            "RustDesk 远程协助",
+            "开源远程桌面，连接和权限由你确认。",
+            "rustdesk/rustdesk",
+            "AGPL-3.0",
+        ),
+    ] {
+        let (homepage, license_url) = if id == "piik-share" {
+            (
+                "https://github.com/TNTcraftHIM/Piik",
+                "https://github.com/TNTcraftHIM/Piik/blob/main/LICENSE",
+            )
+        } else {
+            (
+                "https://github.com/rustdesk/rustdesk",
+                "https://github.com/rustdesk/rustdesk/blob/master/LICENCE",
+            )
+        };
+        let mut item = build_component_definition(
+            id,
+            name,
+            description,
+            "共享与协作",
+            None,
+            Some(repo),
+            Some(homepage),
+            Some(license),
+            Some(license_url),
+            None,
+            None,
+            Some(homepage),
+            github_components::launch_path(id).into_iter().collect(),
+            Vec::new(),
+            None,
+            false,
+            true,
+            true,
+            true,
+        );
+        item.kind = "github";
+        item.summary = if item.installed {
+            format!("{name} 已就绪。")
+        } else {
+            format!("从作者 GitHub 发布下载并校验，按需安装 {name}。")
+        };
+        components.push(item);
+    }
+    components.push(build_component_definition(
+        "localsend",
+        "LocalSend 局域网传文件",
+        "同一网络内互传文件，不需要云盘或账号。",
+        "共享与协作",
+        None,
+        Some("winget · LocalSend"),
+        Some("https://github.com/localsend/localsend"),
+        Some("Apache-2.0"),
+        Some("https://github.com/localsend/localsend/blob/main/LICENSE"),
+        None,
+        Some("LocalSend.LocalSend"),
+        Some("https://localsend.org/"),
+        [
+            local_app_data_dir().map(|p| p.join("Programs/LocalSend/localsend_app.exe")),
+            program_files_dir().map(|p| p.join("LocalSend/localsend_app.exe")),
+        ]
+        .into_iter()
+        .flatten()
+        .collect(),
+        Vec::new(),
+        Some("LocalSend"),
+        false,
+        true,
+        true,
+        true,
+    ));
     components.sort_by(|left, right| {
         right
             .recommended
@@ -1014,7 +1098,10 @@ fn list_components_internal() -> Vec<ComponentManifest> {
                 installed: item.installed,
                 status_label: item.status_label,
                 summary: item.summary,
-                version: item.version.map(|value| value.to_string()),
+                version: item
+                    .version
+                    .map(|value| value.to_string())
+                    .or_else(|| github_components::installed_version(item.id)),
                 source_label: item.source_label.map(|value| value.to_string()),
                 source_url: item.source_url.map(|value| value.to_string()),
                 license_name: item.license_name.map(|value| value.to_string()),
@@ -1338,6 +1425,21 @@ fn uninstall_component_internal(component_id: &str) -> Result<ToolActionResult, 
 
 fn launch_component_internal(component_id: &str) -> Result<ToolActionResult, String> {
     let started_at = Instant::now();
+    if github_components::supported(component_id) {
+        let path = github_components::launch_path(component_id)
+            .ok_or("此组件尚未准备好，请先安装或修复")?;
+        spawn_detached_path(&path, &[])?;
+        return Ok(build_action_result(
+            "launch_component",
+            "打开组件",
+            true,
+            "组件已打开。",
+            path.to_string_lossy(),
+            Some(path.to_string_lossy().into()),
+            Vec::new(),
+            started_at,
+        ));
+    }
     // This is a portable WinGet package. Resolve and launch it directly so opening it
     // never waits for a full winget inventory refresh or gets mistaken for repair.
     if component_id == "context-menu-manager" {
@@ -2026,6 +2128,9 @@ async fn manage_component(
 ) -> Result<ToolActionResult, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let _task = component_updates::begin_component_task(&component_id)?;
+        if github_components::supported(&component_id) {
+            return github_components::manage(&component_id, &operation);
+        }
         match operation.as_str() {
             "install" => install_component_internal(&component_id),
             "repair" => repair_component_internal(&component_id),

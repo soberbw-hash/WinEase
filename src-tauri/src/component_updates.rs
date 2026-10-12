@@ -38,6 +38,7 @@ pub struct ComponentUpdate {
     id: String,
     available: bool,
     version: Option<String>,
+    error: Option<String>,
 }
 fn available_version(output: &str, id: &str) -> Option<String> {
     output.lines().find_map(|line| {
@@ -90,23 +91,44 @@ pub async fn check_component_updates() -> Result<Vec<ComponentUpdate>, String> {
                 "--disable-interactivity",
             ],
             45,
-        )?;
-        // No installed package / no applicable upgrade are normal empty results.
-        if !capture.success && !matches!(capture.exit_code, Some(-1978335212) | Some(-1978335189)) {
-            return Err(format!(
-                "组件更新检查失败：{}",
-                format_process_details(&capture)
-            ));
-        }
+        )
+        .and_then(|capture| {
+            if !capture.success
+                && !matches!(capture.exit_code, Some(-1978335212) | Some(-1978335189))
+            {
+                Err(format_process_details(&capture))
+            } else {
+                Ok(capture)
+            }
+        });
         Ok(component_definitions_internal()
             .into_iter()
-            .filter(|c| c.supports_update && c.winget_id.is_some())
+            .filter(|c| c.installed && c.supports_update)
             .map(|c| {
-                let version = available_version(&capture.stdout, c.winget_id.unwrap());
-                ComponentUpdate {
-                    id: c.id.to_string(),
-                    available: version.is_some(),
-                    version,
+                let result = if crate::github_components::supported(c.id) {
+                    crate::github_components::update_available(c.id)
+                } else {
+                    match (&capture, c.winget_id) {
+                        (Ok(capture), Some(package)) => {
+                            Ok(available_version(&capture.stdout, package))
+                        }
+                        (Err(error), _) => Err(error.clone()),
+                        _ => Ok(None),
+                    }
+                };
+                match result {
+                    Ok(version) => ComponentUpdate {
+                        id: c.id.into(),
+                        available: version.is_some(),
+                        version,
+                        error: None,
+                    },
+                    Err(error) => ComponentUpdate {
+                        id: c.id.into(),
+                        available: false,
+                        version: None,
+                        error: Some(error),
+                    },
                 }
             })
             .collect())

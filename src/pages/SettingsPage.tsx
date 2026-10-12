@@ -162,6 +162,9 @@ export function SettingsPage({
                           修复
                         </button>
                       )}
+                      {item.supportsUpdate && (
+                        <button className="ghost-button" type="button" disabled={Boolean(busyState[item.id])} onClick={() => onManageComponent(item.id, "update")}>更新</button>
+                      )}
                       {item.supportsUninstall && (
                         <button
                           className="ghost-button"
@@ -189,46 +192,6 @@ export function SettingsPage({
               </div>
             )}
           </section>
-          <section className="surface">
-            <div className="section-head">
-              <h2>第三方许可证</h2>
-            </div>
-            <div className="notice-grid">
-              {allNotices.map((notice) => (
-                <article className="soft-card notice-card" key={notice.id}>
-                  <div className="history-item__top">
-                    <div className="settings-component-name">
-                      {getComponentIconPath(notice.id) && (
-                        <img src={getComponentIconPath(notice.id)!} alt="" />
-                      )}
-                      <h3>{notice.name}</h3>
-                    </div>
-                    <small>{notice.licenseName}</small>
-                  </div>
-                  <div className="button-row">
-                    <button
-                      className="ghost-button"
-                      onClick={() => onOpenTarget(notice.sourceUrl)}
-                    >
-                      来源
-                    </button>
-                    {(notice.licenseUrl || notice.id === "harmonyos-sans") && (
-                      <button
-                        className="ghost-button"
-                        onClick={() =>
-                          notice.id === "harmonyos-sans"
-                            ? setFontLicenseOpen(true)
-                            : onOpenTarget(notice.licenseUrl!)
-                        }
-                      >
-                        许可证
-                      </button>
-                    )}
-                  </div>
-                </article>
-              ))}
-            </div>
-          </section>
         </>
       )}
       {section === "about" && (
@@ -244,7 +207,7 @@ export function SettingsPage({
           >
             检查更新
           </button>
-          <p className="scope-note">界面使用 HarmonyOS Sans SC 鸿蒙字体</p>
+          <button className="ghost-button" onClick={() => setFontLicenseOpen(true)}>开源声明</button>
           <div className="about-links">
             <button
               className="setting-line"
@@ -298,11 +261,11 @@ export function SettingsPage({
               licenseOrigin.current?.focus();
             }}
           >
-            <Dialog.Title>鸿蒙字体许可证</Dialog.Title>
+            <Dialog.Title>开源声明</Dialog.Title>
             <Dialog.Description className="scope-note">
-              HarmonyOS Sans SC · Huawei Device Co., Ltd.
+              内置字体与第三方组件的来源及许可。
             </Dialog.Description>
-            <pre>{fontLicense}</pre>
+            <pre>{fontLicense + "\n\n" + allNotices.map(n => `${n.name} · ${n.licenseName}\n${n.sourceUrl}\n${n.licenseUrl ?? ""}`).join("\n\n")}</pre>
             <Dialog.Close asChild>
               <button className="secondary-button">关闭</button>
             </Dialog.Close>

@@ -30,7 +30,11 @@
     "targets": "all",
     "resources": {
       "../docs/branding/icon-master.png": "branding/icon-master.png",
-      "../docs/branding/README.md": "branding/README.md"
+      "../docs/branding/README.md": "branding/README.md",
+      "../public/component-icons/NOTICE.txt": "third-party/NOTICE.txt",
+      "../public/component-icons/LICENSE-Piik.txt": "third-party/LICENSE-Piik.txt",
+      "../public/component-icons/LICENSE-RustDesk.txt": "third-party/LICENSE-RustDesk.txt",
+      "../public/component-icons/LICENSE-LocalSend.txt": "third-party/LICENSE-LocalSend.txt"
     },
     "icon": [
       "icons/32x32.png",

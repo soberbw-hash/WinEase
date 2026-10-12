@@ -88,6 +88,11 @@ fn catalog() -> Vec<Value> {
         json!({"id":"power","label":"高性能","description":"使用本机已有的最高性能计划；增加耗电和发热，关闭恢复原计划。","admin":false,"kind":"power","fields":[]}),
         json!({"id":"local-search","label":"搜索仅显示本地内容","description":"关闭 Windows 搜索的网页建议。","admin":false,"kind":"registry","fields":[field(r"HKCU\Software\Policies\Microsoft\Windows\Explorer","DisableSearchBoxSuggestions",1,0)]}),
         json!({"id":"autoplay","label":"关闭移动设备自动播放","description":"插入移动设备时不再自动播放。","admin":false,"kind":"registry","fields":[field(r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\AutoplayHandlers","DisableAutoplay",1,0)]}),
+        json!({"id":"activity-upload","label":"关闭活动历史上传","description":"不发布或上传应用活动记录；保留本地剪贴板历史。","admin":true,"kind":"registry","fields":[field(r"HKLM\SOFTWARE\Policies\Microsoft\Windows\System","PublishUserActivities",0,1),field(r"HKLM\SOFTWARE\Policies\Microsoft\Windows\System","UploadUserActivities",0,1)]}),
+        json!({"id":"typing-privacy","label":"关闭输入个性化收集","description":"不收集键入、手写及通讯录训练数据；个性化输入建议可能减少。","admin":false,"kind":"registry","fields":[field(r"HKCU\Software\Microsoft\Input\TIPC","Enabled",0,1),field(r"HKCU\Software\Microsoft\InputPersonalization","RestrictImplicitInkCollection",1,0),field(r"HKCU\Software\Microsoft\InputPersonalization","RestrictImplicitTextCollection",1,0),field(r"HKCU\Software\Microsoft\InputPersonalization\TrainedDataStore","HarvestContacts",0,1)]}),
+        json!({"id":"online-speech","label":"关闭在线语音识别","description":"停止在线语音识别授权；需要联网的语音输入将不可用。","admin":false,"kind":"registry","fields":[field(r"HKCU\Software\Microsoft\Speech_OneCore\Settings\OnlineSpeechPrivacy","HasAccepted",0,1)]}),
+        json!({"id":"edge-background","label":"关闭 Edge 后台驻留","description":"关闭启动预加载和关窗后的后台运行；下次打开浏览器可能稍慢。","admin":true,"kind":"registry","fields":[field(r"HKLM\SOFTWARE\Policies\Microsoft\Edge","StartupBoostEnabled",0,1),field(r"HKLM\SOFTWARE\Policies\Microsoft\Edge","BackgroundModeEnabled",0,1)]}),
+        json!({"id":"edge-promotions","label":"减少 Edge 推广","description":"关闭浏览器推荐与个性化报告；不卸载 Edge 或应用依赖的 WebView。","admin":true,"kind":"registry","fields":[field(r"HKLM\SOFTWARE\Policies\Microsoft\Edge","ShowRecommendationsEnabled",0,1),field(r"HKLM\SOFTWARE\Policies\Microsoft\Edge","PersonalizationReportingEnabled",0,1)]}),
     ]
 }
 fn definition(id: &str) -> Result<Value, String> {
@@ -446,7 +451,7 @@ function Invoke-FixturePower {{param($action,$guid);$global:LASTEXITCODE=0;if($a
     #[ignore = "read-only preset state; never changes user settings"]
     fn current_presets_are_readable() {
         let rows = tauri::async_runtime::block_on(get_optimization_presets()).unwrap();
-        assert_eq!(rows.len(), 11);
+        assert_eq!(rows.len(), 16);
         for row in rows {
             println!(
                 "{}: {:?} {}",

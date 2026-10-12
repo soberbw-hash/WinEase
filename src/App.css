@@ -50,7 +50,7 @@
 .optimization-stages .check-icon { width: 20px; height: 20px; flex-basis: 20px; }
 .optimization-stages small { display: block; width: 100%; padding-left: 26px; color: #68707c; }
 .optimization-summary progress { display: block; width: 100%; height: 6px; accent-color: #0874cf; margin-top: 16px; }
-.optimization-home .optimization-section { scroll-margin-top: 205px; display: block; }
+.optimization-home .optimization-section { scroll-margin-top: 12px; display: block; }
 .optimization-home .management-search { width: 100%; padding: 10px 12px; margin: 8px 0 14px; border: 1px solid #d7dde5; border-radius: 6px; background: #fff; }
 .optimization-section > .scope-note, .optimization-section > .inline-error { margin: 12px 0; }
 .optimization-section__title { display: flex; align-items: center; gap: 10px; }
@@ -82,7 +82,7 @@
 .optimization-status-healthy, .optimization-status-success { background: #eaf6ef; color: #287248; }
 @media (max-width: 900px) {
   .optimization-summary .optimization-stages { display: none; }
-  .optimization-home .optimization-section { scroll-margin-top: 150px; }
+  .optimization-home .optimization-section { scroll-margin-top: 12px; }
   .optimization-stages { gap: 5px; }
   .optimization-stages a { padding: 7px 4px; font-size: 12px; }
   .optimization-stages small { padding-left: 0; }
@@ -1849,6 +1849,46 @@ code {
 .optimization-options__body { padding-top: 20px; }
 .optimization-options__body .section-head h2 { font-size: 14px; }
 .optimization-options__body .section-head { justify-content: flex-end; }
+.optimization-settings-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px 24px; }
+.optimization-settings-grid .optimization-setting { padding:12px 0; margin:0; align-items:flex-start; }
+.optimization-settings-grid .setting-description { line-height:1.5; }
+.optimization-settings-grid .startup-toggle { margin-top:2px; }
+.optimization-summary { position:relative; top:auto; z-index:auto; box-shadow:none; }
+.optimization-stages { gap:6px; }
+.optimization-stages a { padding:7px 9px; font-size:12px; }
+.optimization-stages small { display:none; }
+.optimization-home .surface { padding:18px; }
+.optimization-item__row { padding:9px 0; gap:9px; }
+.optimization-item__text p { line-height:1.4; }
+.optimization-files { max-height:300px; overflow:auto; }
+.optimization-options-trigger { display:flex; align-items:center; justify-content:center; gap:10px; width:100%; border:0; background:none; color:inherit; padding:8px; font:inherit; font-weight:600; cursor:pointer; }
+.optimization-options-trigger svg { width:18px; height:18px; }
+.optimization-options__body { animation: optimization-open 180ms ease-out; }
+@keyframes optimization-open { from {opacity:0;transform:translateY(8px)} to {opacity:1;transform:translateY(0)} }
+@media(prefers-reduced-motion:reduce){.optimization-options__body{animation:none}}
+@media(max-width:900px){.optimization-settings-grid{grid-template-columns:minmax(0,1fr)}}
+.disk-map__canvas {height:420px;}
+.disk-map__tile--tiny {padding:0;}
+.disk-map__tile--tiny strong,.disk-map__tile--tiny span {display:none;}
+.disk-map__tile--compact span {display:none;}
+.disk-map__color--0 {background:#bcc7ef;color:#24365f;}
+.disk-map__color--1 {background:#eabdd1;color:#593345;}
+.disk-map__color--2 {background:#f3d59a;color:#5b4215;}
+.disk-map__color--3 {background:#b9dbc2;color:#274c32;}
+.disk-map__color--4 {background:#aecdec;color:#23476a;}
+.disk-map__color--5 {background:#dbc4eb;color:#4e335f;}
+.disk-map__color--6 {background:#a7d6d0;color:#24524c;}
+.disk-map__color--7 {background:#e3c09c;color:#583e24;}
+.disk-map__color--8 {background:#b9c4d4;color:#34455c;}
+.disk-map__color--9 {background:#d4dba7;color:#46502a;}
+.cleanup-kind-description {margin:0 0 8px 60px;color:#68707c;font-size:12px;line-height:1.4;}
+.optimization-section > summary {cursor:pointer;list-style:none;margin-bottom:0;}
+.optimization-section > summary::-webkit-details-marker {display:none;}
+.optimization-section > summary::after {content:'⌄';color:#68707c;margin-left:10px;}
+.optimization-section[open] > summary {margin-bottom:10px;}
+.optimization-section[open] > summary::after {content:'⌃';}
+.optimization-section h2 {font-size:15px;}
+.optimization-options {scroll-margin-top:12px;}
 @media(max-width:760px) {
   .optimization-setting { flex-wrap: wrap; }
   .optimization-setting__text { flex-basis: 100%; }

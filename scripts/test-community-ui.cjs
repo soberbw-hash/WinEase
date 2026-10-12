@@ -68,6 +68,7 @@ async (page) => {
   await page.getByText('已重新注册并核对包状态',{exact:true}).waitFor();
   await nav.getByRole('button',{name:'一键优化',exact:true}).click();
   await page.getByRole('button',{name:'一键检查',exact:true}).click();
+  for (const id of ['preferences','maintenance','apps']) await page.locator(`#check-${id} > summary`).click();
   for(const name of ['选择 Microsoft 天气','选择 减少系统使用建议','选择 更新服务异常'])if(await page.getByRole('checkbox',{name,exact:true}).isChecked())throw Error('Optional action selected automatically: '+name);
   await page.getByRole('checkbox',{name:'选择 Microsoft 天气',exact:true}).check();
   await page.getByRole('checkbox',{name:'选择 减少系统使用建议',exact:true}).check();
