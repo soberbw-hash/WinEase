@@ -38,7 +38,7 @@ async (page) => {
   await page.screenshot({path:'output/playwright/optimization-home.png'});
   await page.getByRole('button',{name:'一键检查',exact:true}).click();
   await page.getByRole('heading',{name:'正在检查',exact:true}).waitFor();
-  if(!await page.getByRole('button',{name:'一键优化',exact:true}).isDisabled())throw Error('Allowed apply while checking');
+  if(!await page.getByRole('region',{name:'检查概览'}).getByRole('button',{name:'一键优化',exact:true}).isDisabled())throw Error('Allowed apply while checking');
   await page.evaluate(()=>window.partial());
   await page.getByRole('checkbox',{name:'选择 Chrome · 网页缓存',exact:true}).waitFor();
   if(!await page.getByRole('checkbox',{name:'选择 Chrome · 网页缓存',exact:true}).isChecked())throw Error('Recommended cache not selected');
@@ -52,7 +52,7 @@ async (page) => {
   if(!await page.getByRole('checkbox',{name:'选择 Steam',exact:true}).isChecked())throw Error('Recommended startup not selected');
   if(await page.getByRole('checkbox',{name:'选择 application.dll',exact:true}).count())throw Error('Protected file selectable');
   await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'组件',exact:true}).click();
-  await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'首页',exact:true}).click();
+  await page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'一键优化',exact:true}).click();
   await page.getByRole('heading',{name:'检查结果',exact:true}).waitFor();
   if(await page.evaluate(()=>window.calls.filter(c=>c.cmd==='start_optimization_check').length)!==1)throw Error('Navigation restarted scan');
   const cache=page.locator('.optimization-item').filter({has:page.getByText('Chrome · 网页缓存',{exact:true})});
@@ -60,17 +60,17 @@ async (page) => {
   await cache.getByRole('button',{name:/更多文件/}).click();await cache.getByText('cache-129.bin',{exact:true}).waitFor();
   await cache.getByRole('button',{name:'收起文件',exact:true}).click();
   await page.getByRole('button',{name:'使用建议项',exact:true}).click();
-  await page.getByRole('button',{name:'一键优化',exact:true}).click();
+  await page.getByRole('region',{name:'检查概览'}).getByRole('button',{name:'一键优化',exact:true}).click();
   await page.getByRole('alertdialog').waitFor();
   if(await page.evaluate(()=>window.calls.some(c=>c.cmd==='start_optimization')))throw Error('Applied before confirmation');
   await page.getByRole('button',{name:'取消',exact:true}).click();
   await page.getByRole('checkbox',{name:'选择 archive.zip',exact:true}).check();
-  await page.getByRole('button',{name:'一键优化',exact:true}).click();
+  await page.getByRole('region',{name:'检查概览'}).getByRole('button',{name:'一键优化',exact:true}).click();
   if(!await page.getByRole('alertdialog').textContent().then(t=>t.includes('移到回收站')))throw Error('Personal-file effect absent');
   await page.getByRole('button',{name:'取消',exact:true}).click();
   await page.getByRole('button',{name:'使用建议项',exact:true}).click();
   await page.screenshot({path:'output/playwright/optimization-results.png'});
-  await page.getByRole('button',{name:'一键优化',exact:true}).click();
+  await page.getByRole('region',{name:'检查概览'}).getByRole('button',{name:'一键优化',exact:true}).click();
   await page.getByRole('button',{name:'确认并优化',exact:true}).click();
   await page.getByRole('heading',{name:'正在优化',exact:true}).waitFor();
   const call=await page.evaluate(()=>window.calls.filter(c=>c.cmd==='start_optimization'));

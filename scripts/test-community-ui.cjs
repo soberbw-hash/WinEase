@@ -39,7 +39,7 @@ async (page) => {
   await page.getByRole('button',{name:'扫描应用',exact:true}).click();
   await page.getByText('Microsoft 天气',{exact:true}).waitFor();
   if(await page.getByRole('button',{name:'受保护',exact:true}).count())throw Error('Protected packages crowd default list');
-  await page.getByRole('checkbox',{name:'显示受保护应用',exact:true}).check();
+  await page.getByRole('switch',{name:'显示受保护应用',exact:true}).check();
   if(!await page.getByRole('button',{name:'受保护',exact:true}).isDisabled())throw Error('Critical package removable');
   await page.getByRole('button',{name:'卸载',exact:true}).click();
   const dialog=page.getByRole('alertdialog');await dialog.waitFor();
@@ -66,12 +66,12 @@ async (page) => {
   await page.evaluate(()=>window.finishMaintenance());
   await nav.getByRole('button',{name:'系统工具',exact:true}).click();
   await page.getByText('已重新注册并核对包状态',{exact:true}).waitFor();
-  await nav.getByRole('button',{name:'首页',exact:true}).click();
+  await nav.getByRole('button',{name:'一键优化',exact:true}).click();
   await page.getByRole('button',{name:'一键检查',exact:true}).click();
   for(const name of ['选择 Microsoft 天气','选择 减少系统使用建议','选择 更新服务异常'])if(await page.getByRole('checkbox',{name,exact:true}).isChecked())throw Error('Optional action selected automatically: '+name);
   await page.getByRole('checkbox',{name:'选择 Microsoft 天气',exact:true}).check();
   await page.getByRole('checkbox',{name:'选择 减少系统使用建议',exact:true}).check();
-  await page.getByRole('button',{name:'一键优化',exact:true}).click();
+  await page.getByRole('region',{name:'检查概览'}).getByRole('button',{name:'一键优化',exact:true}).click();
   if(!await dialog.textContent().then(t=>t.includes('可能删除应用数据')&&t.includes('原值')))throw Error('Unified consent omitted new actions');
   await dialog.getByRole('button',{name:'确认并优化',exact:true}).click();
   if(!await page.evaluate(()=>window.calls.some(c=>c.cmd==='start_optimization'&&c.args.itemIds.includes('app')&&c.args.itemIds.includes('pref')&&c.args.confirmed)))throw Error('Unified plan lost selection');

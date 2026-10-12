@@ -1,3 +1,4 @@
+import { ToggleSwitch } from "./ToggleSwitch";
 import { getComponentIconPath } from "./componentIcons";
 import type {
   ComponentBusyState,
@@ -176,20 +177,9 @@ export function ComponentCenter({
                   {item.id === "capture-plus" &&
                     item.installed &&
                     onToggleCaptureHelper && (
-                      <label
-                        className="component-capture-toggle"
-                        title="F1 截图 · F3 贴图"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={captureHelperEnabled}
-                          disabled={isBusy}
-                          onChange={(event) =>
-                            onToggleCaptureHelper(event.target.checked)
-                          }
-                        />
-                        快捷键
-                      </label>
+                      <ToggleSwitch label="截图快捷键" checked={captureHelperEnabled} disabled={isBusy}
+                        state={captureHelperEnabled ? "快捷键开" : "快捷键关"} onChange={onToggleCaptureHelper}/>
+
                     )}
                 </div>
               </article>

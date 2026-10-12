@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { OptimizationSettings } from "../OptimizationSettings";
 import { invoke } from "@tauri-apps/api/core";
 import { ApplicationIcon } from "../ApplicationIcon";
 import { CheckIcon } from "../CheckIcon";
@@ -12,6 +13,7 @@ const labels: Record<string, string> = {recommended: "建议优化", optional: "
 export function HomePage({onQuickAction}: {onQuickAction: (id: string) => void}) {
   const flow = useOptimization();
   const {report, selected} = flow;
+  const [settingsChanged, setSettingsChanged] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const [expanded, setExpanded] = useState<string[]>([]);
   const [details, setDetails] = useState<Record<string, Files>>({});
@@ -38,7 +40,7 @@ export function HomePage({onQuickAction}: {onQuickAction: (id: string) => void})
   async function check() {
     if (busy) return;
     setExpanded([]); setDetails({}); setDetailErrors({}); setLoading([]); setVisible({}); setSearch("");
-    await flow.check();
+    setSettingsChanged(false); await flow.check();
   }
   async function files(row: OptimizationItem, offset = 0) {
     if (!report) return;
@@ -123,22 +125,26 @@ export function HomePage({onQuickAction}: {onQuickAction: (id: string) => void})
       <p>清理 · 空间 · 体检 · 网络 · 开机</p>
       <button className="primary-button optimization-primary" disabled={flow.submitting} onClick={() => void check()}>{flow.submitting ? "开始检查…" : "一键检查"}</button>
       <small>先检查，再确认优化</small>
+      <a href="#optimization-settings">优化设置 ↓</a>
     </section> : <>
       <section className="surface optimization-summary" aria-label="检查概览">
         <div className="optimization-summary__top"><div>
           <h2>{report.phase === "checking" ? "正在检查" : report.phase === "optimizing" ? "正在优化" : report.phase === "complete" ? "优化结果" : report.phase === "expired" ? "检查结果已过期" : "检查结果"}</h2>
-          <p aria-live="polite">{report.phase === "checking" ? `${finished} / 5 项检查已完成` : report.phase === "optimizing" ? `${report.completedActions} / ${report.totalActions} 项已处理` : report.phase === "complete" ? `${report.completedActions} 项已处理 · ${report.outcomes.filter(result => result.status === "failed").length} 项操作未完整完成` : report.phase === "expired" ? "重新检查后可继续优化" : chosen.length ? `已选 ${chosen.length} 项${cacheBytes > 0 ? ` · 缓存 ${formatBytes(cacheBytes)}` : ""}${fileBytes > 0 ? ` · 大文件 ${formatBytes(fileBytes)}` : ""}` : "暂无已选优化项，可查看下方建议"}</p>
+          <p aria-live="polite">{report.phase === "checking" ? `${finished} / ${report.sections.length} 项检查已完成` : report.phase === "optimizing" ? `${report.completedActions} / ${report.totalActions} 项已处理` : report.phase === "complete" ? `${report.completedActions} 项已处理 · ${report.outcomes.filter(result => result.status === "failed").length} 项操作未完整完成` : report.phase === "expired" ? "重新检查后可继续优化" : chosen.length ? `已选 ${chosen.length} 项${cacheBytes > 0 ? ` · 缓存 ${formatBytes(cacheBytes)}` : ""}${fileBytes > 0 ? ` · 大文件 ${formatBytes(fileBytes)}` : ""}` : "暂无已选优化项，可查看下方建议"}</p>
         </div><div className="button-row">
+          <a href="#optimization-settings">优化设置 ↓</a>
           {report.phase === "ready" && <button className="ghost-button" disabled={flow.submitting} onClick={flow.recommendations}>使用建议项</button>}
           <button className="secondary-button" disabled={busy} onClick={() => void check()}>重新检查</button>
-          {report.phase !== "complete" && report.phase !== "expired" && <button className="primary-button optimization-primary" disabled={busy || report.phase !== "ready" || !chosen.length} onClick={() => setConfirm(true)}>{report.phase === "optimizing" ? "优化中…" : "一键优化"}</button>}
+          {report.phase !== "complete" && report.phase !== "expired" && <button className="primary-button optimization-primary" disabled={busy || report.phase !== "ready" || settingsChanged || !chosen.length} onClick={() => setConfirm(true)}>{report.phase === "optimizing" ? "优化中…" : "一键优化"}</button>}
         </div></div>
         <div className="optimization-stages">{report.sections.map(section => <a href={`#check-${section.id}`} key={section.id}><CheckIcon kind={section.id}/><span>{section.title}</span><small>{section.status === "checking" ? "检查中" : section.status === "error" ? "未完成" : "已检查"}</small></a>)}</div>
-        {(report.phase === "checking" || report.phase === "optimizing") && <progress aria-label={report.phase === "checking" ? "检查进度" : "优化进度"} max={report.phase === "checking" ? 5 : report.totalActions || 1} value={report.phase === "checking" ? finished : report.completedActions}/>}
+        {(report.phase === "checking" || report.phase === "optimizing") && <progress aria-label={report.phase === "checking" ? "检查进度" : "优化进度"} max={report.phase === "checking" ? report.sections.length : report.totalActions || 1} value={report.phase === "checking" ? finished : report.completedActions}/>}
       </section>
       {report.outcomes.length > 0 && <section className="surface" aria-label="执行结果"><h2>本次处理</h2>{report.outcomes.map((result,index) => <div className="optimization-outcome" key={index}><strong>{result.title}</strong><p className={result.status === "failed" ? "inline-error" : "optimization-success"}>{result.message}</p></div>)}</section>}
       {report.sections.map(renderSection)}
     </>}
+    {settingsChanged && report?.phase === "ready" && <p className="scope-note" role="status">设置已更改，重新检查后可执行建议项。</p>}
+    <OptimizationSettings disabled={!!busy} revision={report?.phase === "complete" ? `${report.id}:${report.revision}` : undefined} onChanged={() => setSettingsChanged(true)}/>
     <ConfirmDialog open={confirm} title={`优化已选的 ${chosen.length} 个项目？`} description={confirmDescription} confirmLabel="确认并优化" onCancel={() => setConfirm(false)} onConfirm={() => {setConfirm(false); void flow.optimize();}}/>
   </div>;
 }

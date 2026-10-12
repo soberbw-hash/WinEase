@@ -17,26 +17,27 @@ async (page) => {
   });
   await page.goto('http://127.0.0.1:1420');await page.setViewportSize({width:1280,height:820});
   const nav=page.getByRole('navigation',{name:'主导航'});
-  if(await page.evaluate(()=>window.calls.some(c=>c.cmd==='get_windows_settings')))throw Error('Hidden system page probes at startup');
-  await nav.getByRole('button',{name:'系统工具',exact:true}).click();
   await page.getByRole('switch',{name:'减少资源管理器推广',exact:true}).waitFor();
   if(await page.getByRole('switch',{name:'透明效果',exact:true}).count() || await page.getByRole('button',{name:/视觉效果|任务栏设置/}).count())throw Error('Beautification controls still present');
   await page.getByRole('switch',{name:'阻止自动安装推荐应用',exact:true}).check();
   if(!await page.evaluate(()=>window.calls.some(c=>c.cmd==='set_windows_setting'&&c.args.id==='block-suggested-apps'&&c.args.enabled===true)))throw Error('Suggested-app block not applied');
   await page.getByText('电源计划读取失败',{exact:true}).waitFor();
-  await page.getByRole('combobox',{name:'移动设备自动播放',exact:true}).selectOption('off');
+  await page.getByRole('switch',{name:'移动设备自动播放',exact:true}).check();
+  await page.getByRole('switch',{name:'移动设备自动播放',exact:true}).uncheck();
   await page.getByRole('switch',{name:'移动设备自动播放',exact:true}).waitFor();
   if(await page.getByRole('switch',{name:'移动设备自动播放'}).isChecked())throw Error('Cannot disable unset preference');
   const row=page.locator('.setting-line').filter({has:page.getByRole('switch',{name:'移动设备自动播放'})});
   await row.getByRole('button',{name:'恢复原设置',exact:true}).click();
-  await page.getByRole('combobox',{name:'移动设备自动播放'}).waitFor();
+  await row.getByText('系统默认',{exact:true}).waitFor();
+  await nav.getByRole('button',{name:'系统工具',exact:true}).click();
   await page.getByRole('button',{name:'磁盘优化',exact:false}).click();
   if(!await page.evaluate(()=>window.calls.some(c=>c.cmd==='open_health_tool'&&c.args.tool==='open_drive_optimizer')))throw Error('Drive optimizer routed incorrectly');
   if(await page.getByRole('button',{name:/默认应用/}).count()!==1)throw Error('Duplicate default-app entry');
   await page.getByRole('button',{name:'检查并修复',exact:true}).click();
   await page.getByRole('button',{name:'修复中…',exact:true}).waitFor();
+  await nav.getByRole('button',{name:'一键优化',exact:true}).click();
   if(await page.getByRole('switch',{name:'减少资源管理器推广'}).isDisabled())throw Error('System repair blocks unrelated settings');
-  await nav.getByRole('button',{name:'首页',exact:true}).click();
+  await nav.getByRole('button',{name:'一键优化',exact:true}).click();
   await page.evaluate(()=>window.finishRepair());
   await nav.getByRole('button',{name:'系统工具',exact:true}).click();
   await page.getByText('夹具修复完成',{exact:true}).waitFor();
@@ -47,5 +48,5 @@ async (page) => {
   }
   await page.setViewportSize({width:1280,height:820});
   await page.screenshot({path:'output/playwright/system-tools.png',fullPage:true});
-  console.log('PASS: 9 system flows: no beautification, suggested-app preference, lazy reads, isolated read failure, unset preference off, original restore, native tool route, independent repair/navigation, responsive layout');
+  console.log('PASS: 9 system flows: no beautification, suggested-app preference, home setting reads, isolated read failure, default switch on/off, original restore, native tool route, independent repair/navigation, responsive layout');
 }

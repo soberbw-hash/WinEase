@@ -861,7 +861,7 @@ async fn scan_preferences() -> Result<Findings, String> {
                 "optional"
             },
         );
-        row.target = Some("open_system".into());
+        row.target = Some("open_home".into());
         row.icon_kind = "system".into();
         if let Some(error) = setting.error {
             row.detail = error;

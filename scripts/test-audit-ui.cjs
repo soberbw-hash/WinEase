@@ -27,7 +27,7 @@ async (page) => {
   if(!await choice.isChecked())throw Error('Cleaning results lost when completed on another page');
   await page.getByText(/本次达到扫描时间或数量上限/).waitFor();
   await choice.uncheck();
-  await nav.getByRole('button',{name:'首页',exact:true}).click();
+  await nav.getByRole('button',{name:'一键优化',exact:true}).click();
   await nav.getByRole('button',{name:'清理',exact:true}).click();
   if(await choice.isChecked())throw Error('Navigation lost manual cleaning selection');
   if(await page.evaluate(()=>window.calls.filter(call=>call.cmd==='scan_cleaning').length)!==1)throw Error('Returning to cleaner restarts scan');

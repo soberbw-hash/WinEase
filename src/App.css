@@ -1842,3 +1842,11 @@ code {
 }
 
 [hidden] { display: none !important; }
+.optimization-setting { align-items: center; gap: 16px; }
+.optimization-setting__text { flex: 1; min-width: 0; }
+.optimization-setting__controls { display: flex; align-items: center; justify-content: flex-end; gap: 12px; }
+@media(max-width:760px) {
+  .optimization-setting { flex-wrap: wrap; }
+  .optimization-setting__text { flex-basis: 100%; }
+  .optimization-setting__controls { flex-wrap: wrap; justify-content: flex-start; }
+}

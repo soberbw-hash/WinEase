@@ -1,3 +1,4 @@
+import { ToggleSwitch } from "./ToggleSwitch";
 import { useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { ConfirmDialog } from "./ConfirmDialog";
@@ -28,7 +29,7 @@ export function PreinstalledApps({visible = true, onOpenTarget}: {visible?: bool
     <div className="section-head"><h2><CheckIcon kind="files"/>预装应用</h2><button className="secondary-button" disabled={busy} onClick={() => void scan()}>{busy ? "处理中…" : loaded ? "重新扫描" : "扫描应用"}</button></div>
     <p className="scope-note">仅处理当前用户。卸载可能删除应用数据；恢复记录用于重新安装，不是数据备份。</p>
     {error && <p className="inline-error" role="alert">{error}</p>}{message && <p className="scope-note" role="status">{message}</p>}
-    <div className="community-filter"><label><input type="checkbox" checked={all} onChange={e => setAll(e.target.checked)}/> 显示受保护应用</label><input aria-label="搜索预装应用" type="search" placeholder="搜索应用" value={search} onChange={e => setSearch(e.target.value)}/></div>
+    <div className="community-filter"><ToggleSwitch label="显示受保护应用" checked={all} state={all ? "显示受保护应用" : "隐藏受保护应用"} onChange={setAll}/><input aria-label="搜索预装应用" type="search" placeholder="搜索应用" value={search} onChange={e => setSearch(e.target.value)}/></div>
     {visibleRows.map(item => <div className="manager-row" key={item.name}>
       <ApplicationIcon target={item.iconTarget ?? ""}/><div className="manager-row__text"><strong>{item.label} {item.removed && <small>已移除</small>}</strong><small>{item.purpose}</small><details><summary>版本与依赖</summary><p className="scope-note">{item.version} · {item.name}<br/>{item.dependencies.length ? item.dependencies.join("、") : "无已记录依赖"}</p></details></div>
       <span className="tabular">{item.removed ? "" : item.sizeBytes === null ? "大小未核实" : `${item.sizeLimited ? "已统计 " : ""}${formatBytes(item.sizeBytes)}`}</span>

@@ -1,7 +1,7 @@
 import type { SectionId } from "./types";
 export const bossModeShortcut = "Ctrl + Alt + B";
 export const sections: Array<{ id: SectionId; label: string }> = [
-  { id: "home", label: "首页" },
+  { id: "home", label: "一键优化" },
   { id: "cleaning", label: "清理" },
   { id: "efficiency", label: "空间管理" },
   { id: "applications", label: "应用管理" },

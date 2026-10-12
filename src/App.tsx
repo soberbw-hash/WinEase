@@ -202,7 +202,8 @@ function App() {
     }
   }
   function quickAction(id: string) {
-    if (id === "open_cleaning") setActiveSection("cleaning");
+    if (id === "open_home") setActiveSection("home");
+    else if (id === "open_cleaning") setActiveSection("cleaning");
     else if (id === "open_storage" || id === "open_duplicates") {
       setDuplicates(id === "open_duplicates");
       setFileNavigation((value) => value + 1);
