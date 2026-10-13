@@ -1,6 +1,6 @@
 [package]
 name = "winease"
-version = "3.5.0"
+version = "1.0.0"
 description = "WinEase 极简 Windows 工具箱。"
 authors = ["soberbw-hash"]
 edition = "2021"

@@ -4,7 +4,7 @@
 
 应用启动后在后台请求 `https://github.com/soberbw-hash/WinEase/releases/latest/download/latest.json`，仅接受更高版本；GitHub 失败时不打断启动，可在设置→关于手动重试。使用 Tauri 官方 updater、内置公钥及 Minisign 签名验证，沿用系统代理。下载地址限定此仓库的 release assets。后台下载完成并校验后提示“安装并重启”，用户确认前不启动安装器。Windows 安装器使用 passive 模式并在完成后重新打开应用；机器级安装仍可能需要 Windows 授权。暂不跨应用启动保存下载任务。
 
-当前 GitHub 最新发布仍是旧版 v3.4.0，没有本版 `latest.json`；因此更新协议已接入，但正式发布签名清单前不会收到本版更新。未把缺少清单说成“已是最新版本”。
+WinEase 正式版从 1.0.0 开始编号，发布包含安装包、更新签名、latest.json 与校验和。此前 3.x 开发预览的版本号高于 1.0.0，需手动安装本版；后续 1.x 按更高版本正常自动升级。旧发布与标签在删除前另行归档，源码历史保留。
 
 ## 签名与发布准备
 

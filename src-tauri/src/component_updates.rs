@@ -225,7 +225,10 @@ mod tests {
         )
         .unwrap();
         let public = minisign_verify::PublicKey::decode(&key).unwrap();
-        let installer = root.join("target/release/bundle/nsis/WinEase_3.5.0_x64-setup.exe");
+        let installer = root.join(format!(
+            "target/release/bundle/nsis/WinEase_{}_x64-setup.exe",
+            env!("CARGO_PKG_VERSION")
+        ));
         let signature = std::fs::read_to_string(installer.with_extension("exe.sig")).unwrap();
         let signature = String::from_utf8(STANDARD.decode(signature.trim()).unwrap()).unwrap();
         let signature = minisign_verify::Signature::decode(&signature).unwrap();

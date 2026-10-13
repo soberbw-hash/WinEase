@@ -17,7 +17,7 @@ public static class WinEaseInsights {
     static HttpClient Client() {
         var handler = new HttpClientHandler {UseProxy=true, Proxy=WebRequest.GetSystemWebProxy(), UseCookies=false, AllowAutoRedirect=true, MaxAutomaticRedirections=3};
         var client = new HttpClient(handler) {Timeout=TimeSpan.FromSeconds(8), MaxResponseContentBufferSize=65536};
-        client.DefaultRequestHeaders.UserAgent.ParseAdd("WinEase/3.5 NetworkInsights");
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("WinEase/1.0 NetworkInsights");
         return client;
     }
     static async Task<WinEaseSite> Probe(HttpClient client, string id, string name, string url, string area) {

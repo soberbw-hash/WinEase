@@ -1,7 +1,7 @@
 {
   "name": "winease",
   "private": true,
-  "version": "3.5.0",
+  "version": "1.0.0",
   "description": "极简 Windows 工具箱：清理、空间管理、系统维护与常用设置。",
   "type": "module",
   "scripts": {

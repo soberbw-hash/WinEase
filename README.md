@@ -2,11 +2,13 @@
 
 极简 Windows 工具箱：清理、空间管理、应用管理与常用系统设置。
 
+[下载 WinEase 1.0.0](https://github.com/soberbw-hash/WinEase/releases/tag/v1.0.0)
+
 未来定位与功能取舍见 [产品方向](docs/product-direction.md)。
 
 品牌原图与图标生成方式见 [品牌资源](docs/branding/README.md)。
 
-## v3.5.0
+## v1.0.0
 
 - 默认窗口 1280 × 820，根据显示器工作区与 DPI 自动缩小；组件中心三列布局。
 - 内置鸿蒙字体，字号与密度按窗口自动适配；进程、启动项和弹窗显示应用图标，Snipaste 与其他组件统一排版。
