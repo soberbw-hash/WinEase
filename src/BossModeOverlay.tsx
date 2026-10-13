@@ -2,7 +2,6 @@ import type { BossModeViewState } from "./types";
 
 type BossModeOverlayProps = {
   state: BossModeViewState;
-  exitHint: string;
 };
 
 function LoadingDots() {
@@ -15,24 +14,24 @@ function LoadingDots() {
   );
 }
 
-export function BossModeOverlay({ state, exitHint }: BossModeOverlayProps) {
+export function BossModeOverlay({ state }: BossModeOverlayProps) {
   if (state.isRebooting) {
     return <div className="boss-mode boss-mode--reboot" />;
   }
 
   return (
-    <div className="boss-mode" onContextMenu={(event) => event.preventDefault()}>
+    <div
+      className="boss-mode"
+      onContextMenu={(event) => event.preventDefault()}
+    >
       <div className="boss-mode__content">
         <LoadingDots />
-        <h2>{state.stageTitle}</h2>
-        <p className="boss-mode__percent">{state.percent}% 完成</p>
-        <p className="boss-mode__hint">{state.stageHint}</p>
+        <p>正在进行更新 {state.percent}%</p>
+        <p>请保持计算机打开。</p>
       </div>
 
       <div className="boss-mode__footer">
-        <p>{state.instruction}</p>
-        <small>{state.phaseLabel}</small>
-        <div className="boss-mode__exit">{exitHint}</div>
+        <p>计算机可能会重启几次。</p>
       </div>
     </div>
   );

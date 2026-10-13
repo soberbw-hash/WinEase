@@ -2,5 +2,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    win_toolbox_lib::run()
+    if winease_lib::network_helper_entry() {
+        return;
+    }
+    winease_lib::run()
 }

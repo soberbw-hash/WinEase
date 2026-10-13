@@ -52,18 +52,28 @@ function getSpan(sizeBytes: number, total: number) {
   return 2;
 }
 
-export function StorageVisualizer({ hotspots, onOpenTarget }: StorageVisualizerProps) {
+export function StorageVisualizer({
+  hotspots,
+  onOpenTarget,
+}: StorageVisualizerProps) {
   const visible = hotspots.slice(0, 8);
   const total = visible.reduce((sum, item) => sum + item.sizeBytes, 0);
 
   if (visible.length === 0) {
-    return <div className="empty-state">还没有扫描到空间热点，点一下刷新再看看。</div>;
+    return (
+      <div className="empty-state">
+        还没有扫描到空间热点，点一下刷新再看看。
+      </div>
+    );
   }
 
   return (
     <div className="storage-visual">
       <div className="storage-visual__summary soft-card">
-        <div className="storage-donut" style={{ backgroundImage: buildGradient(visible) }}>
+        <div
+          className="storage-donut"
+          style={{ backgroundImage: buildGradient(visible) }}
+        >
           <div className="storage-donut__inner">
             <strong>{formatBytes(total)}</strong>
             <span>已扫描热点</span>
@@ -119,11 +129,17 @@ export function StorageVisualizer({ hotspots, onOpenTarget }: StorageVisualizerP
                 />
                 <strong>{item.label}</strong>
               </div>
-              <span className="pill pill--muted">{formatBytes(item.sizeBytes)}</span>
+              <span className="pill pill--muted">
+                {formatBytes(item.sizeBytes)}
+              </span>
             </div>
             <p>{item.path}</p>
             <small>{item.itemCount} 项</small>
-            <button className="ghost-button" type="button" onClick={() => onOpenTarget(item.path)}>
+            <button
+              className="ghost-button"
+              type="button"
+              onClick={() => onOpenTarget(item.path)}
+            >
               打开位置
             </button>
           </article>

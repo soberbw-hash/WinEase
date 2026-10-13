@@ -1,24 +1,44 @@
-type SupportModalProps = {
+import * as Dialog from "@radix-ui/react-dialog";
+import { useRef } from "react";
+export function SupportModal({
+  open,
+  onClose,
+}: {
   open: boolean;
   onClose: () => void;
-};
-
-export function SupportModal({ open, onClose }: SupportModalProps) {
-  if (!open) {
-    return null;
-  }
-
+}) {
+  const origin = useRef<HTMLElement | null>(null);
   return (
-    <div className="support-modal-backdrop" onClick={onClose}>
-      <div className="support-modal" onClick={(event) => event.stopPropagation()}>
-        <button className="support-modal__close" type="button" onClick={onClose}>
-          关闭
-        </button>
-        <p className="section-kicker">Support</p>
-        <h2>赞助支持</h2>
-        <p>如果这个工具对你有帮助，欢迎扫码支持继续打磨。</p>
-        <img src="/donate-qr.png" alt="赞助收款码" className="support-modal__qr" />
-      </div>
-    </div>
+    <Dialog.Root
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+    >
+      <Dialog.Portal>
+        <Dialog.Overlay className="dialog-overlay" />
+        <Dialog.Content
+          className="dialog-panel support-modal"
+          onOpenAutoFocus={() => {
+            origin.current = document.activeElement as HTMLElement;
+          }}
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            origin.current?.focus();
+          }}
+        >
+          <Dialog.Title>赞助</Dialog.Title>
+          <Dialog.Description>感谢支持</Dialog.Description>
+          <img
+            src="/donate-qr.png"
+            alt="赞助收款码"
+            className="support-modal__qr"
+          />
+          <Dialog.Close asChild>
+            <button className="secondary-button">关闭</button>
+          </Dialog.Close>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }

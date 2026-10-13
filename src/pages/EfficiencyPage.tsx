@@ -4,11 +4,16 @@ import type { StorageHotspot } from "../types";
 
 type EfficiencyPageProps = {
   hotspots: StorageHotspot[];
+  busy: boolean;
+  error: string;
   onRefreshHotspots: () => void;
   onOpenTarget: (target: string) => void;
 };
 
-const quickPathMap: Record<(typeof quickPathTargets)[number]["pathKey"], string> = {
+const quickPathMap: Record<
+  (typeof quickPathTargets)[number]["pathKey"],
+  string
+> = {
   downloads: "shell:Downloads",
   desktop: "shell:Desktop",
   documents: "shell:Personal",
@@ -16,6 +21,8 @@ const quickPathMap: Record<(typeof quickPathTargets)[number]["pathKey"], string>
 
 export function EfficiencyPage({
   hotspots,
+  busy,
+  error,
   onRefreshHotspots,
   onOpenTarget,
 }: EfficiencyPageProps) {
@@ -24,28 +31,38 @@ export function EfficiencyPage({
       <section className="surface">
         <div className="section-head">
           <div>
-            <p className="section-kicker">Storage</p>
             <h2>空间管理</h2>
           </div>
-          <button className="ghost-button" type="button" onClick={onRefreshHotspots}>
-            刷新扫描
+          <button
+            className="ghost-button"
+            type="button"
+            disabled={busy}
+            onClick={onRefreshHotspots}
+          >
+            {busy ? "扫描中…" : hotspots.length ? "重新扫描" : "开始扫描"}
           </button>
         </div>
 
-        <p className="section-copy section-copy--full">
-          用图形视图和列表一起看清空间热点，先知道哪里能删、哪里最好先别动。
-        </p>
-
-        <StorageVisualizer hotspots={hotspots} onOpenTarget={onOpenTarget} />
+        <p className="scope-note">范围：下载、桌面、文档、图片、视频</p>
+        {error && (
+          <p className="inline-error" role="alert">
+            {error}
+          </p>
+        )}
+        {hotspots.length > 0 ? (
+          <StorageVisualizer hotspots={hotspots} onOpenTarget={onOpenTarget} />
+        ) : (
+          <div className="empty-state">
+            {busy ? "正在扫描" : "点击开始扫描"}
+          </div>
+        )}
       </section>
 
       <section className="surface">
         <div className="section-head">
           <div>
-            <p className="section-kicker">Quick Paths</p>
             <h2>常用目录</h2>
           </div>
-          <p className="section-copy">下载、桌面和文档一键直达，找空间热点时会更顺手。</p>
         </div>
 
         <div className="quick-path-grid">

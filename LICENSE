@@ -1,11 +1,11 @@
-Win Toolbox 源码可见专有软件许可
-Win Toolbox Source-Available Proprietary License
+WinEase 源码可见专有软件许可
+WinEase Source-Available Proprietary License
 
 Copyright (c) 2026 soberbw-hash. All Rights Reserved.
 
 1. 权利保留
 
-除本文件明确授予的权利外，Win Toolbox 的软件源代码、用户界面、品牌标识、文档、图片、组件清单、构建脚本及其衍生内容的全部权利均由版权所有者保留。
+除本文件明确授予的权利外，WinEase 的软件源代码、用户界面、品牌标识、文档、图片、组件清单、构建脚本及其衍生内容的全部权利均由版权所有者保留。
 
 2. 源码公开不构成开源授权
 
@@ -22,7 +22,7 @@ Copyright (c) 2026 soberbw-hash. All Rights Reserved.
 - 复制、修改、翻译、合并、发布或分发本软件的全部或部分内容；
 - 将本软件、源码、组件清单或衍生作品用于商业产品、收费服务、对外托管服务或向第三方提供的内部生产服务；
 - 删除或更改版权、品牌、归属或许可声明；
-- 使用 Win Toolbox 的名称、图标、界面或其它品牌元素，使他人误认为存在授权、合作、官方来源或认可关系；
+- 使用 WinEase 的名称、图标、界面或其它品牌元素，使他人误认为存在授权、合作、官方来源或认可关系；
 - 将本仓库内容作为代码数据集、模型训练材料、检索语料或自动生成衍生软件的输入，但适用法律明确允许且不得通过合同限制的情形除外；
 - 绕过本许可，通过重新打包、镜像、代下载、预装或其它方式向第三方提供本软件。
 
@@ -46,7 +46,7 @@ Copyright (c) 2026 soberbw-hash. All Rights Reserved.
 
 No permission is granted to copy, modify, merge, publish, distribute,
 sublicense, sell, repackage, preinstall, host, deploy as a service,
-commercially use, or create derivative works from the Win Toolbox
+commercially use, or create derivative works from the WinEase
 application, source code, user interface, branding, documentation, component
 catalog, or build resources, except with prior written permission from the
 copyright holder. Public availability of this repository does not make the
