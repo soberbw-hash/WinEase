@@ -44,6 +44,8 @@ function App() {
   const [managementTab, setManagementTab] =
     useState<ManagementTab>("processes");
   const [applicationsVisited, setApplicationsVisited] = useState(false);
+  const [networkVisited, setNetworkVisited] = useState(false);
+  useEffect(() => {if (activeSection === "network") setNetworkVisited(true);}, [activeSection]);
   useEffect(() => {if (activeSection === "applications") setApplicationsVisited(true);}, [activeSection]);
   const [duplicates, setDuplicates] = useState(false);
   const [fileNavigation, setFileNavigation] = useState(0);
@@ -358,9 +360,7 @@ function App() {
       case "health":
         return <HealthPage onNavigate={quickAction} />;
       case "network":
-        return (
-          <NetworkPage onOpenTarget={(target) => void openTarget(target)} />
-        );
+        return null;
       case "applications":
         return null;
       case "system":
@@ -460,6 +460,7 @@ function App() {
                 </div>
               )}
             {renderPage()}
+            <div hidden={activeSection !== "network"}>{networkVisited && <NetworkPage onOpenTarget={(target) => void openTarget(target)} />}</div>
             <div hidden={activeSection !== "home"}>
               <HomePage onQuickAction={quickAction} />
             </div>

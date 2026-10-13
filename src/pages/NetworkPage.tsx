@@ -3,6 +3,7 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { ApplicationIcon } from "../ApplicationIcon";
+import { NetworkInsights } from "../NetworkInsights";
 
 type Tool = {
   id: string;
@@ -112,6 +113,7 @@ export function NetworkPage({
   onOpenTarget: (target: string) => void;
 }) {
   const [scan, setScan] = useState<Scan | null>(null);
+  const [tab, setTab] = useState("diagnostics");
   const [tools, setTools] = useState<Tool[]>([]);
   const [backups, setBackups] = useState<Backup[]>([]);
   const [busy, setBusy] = useState("");
@@ -253,7 +255,9 @@ export function NetworkPage({
         : `将执行：${scan?.plan.map((t) => t.title).join("、") ?? ""}。先备份，修复后自动检查。${scan?.plan.some((t) => t.admin) ? " 部分操作需要管理员授权。" : ""}${scan?.plan.some((t) => t.disruptive) ? " 网络可能短暂中断。" : ""}`;
   return (
     <div className="page-stack network-page" aria-busy={Boolean(busy)}>
-      <section className="surface network-summary">
+      <nav className="subnav" aria-label="网络分类">{[["diagnostics","检查与修复"],["speed","网速测试"],["sites","网站测试"],["ip","IP 信息"]].map(([id,label])=><button key={id} type="button" aria-pressed={tab===id} onClick={()=>setTab(id)}>{label}</button>)}</nav>
+      <NetworkInsights view={tab}/>
+      <section className="surface network-summary" hidden={tab!=="diagnostics"}>
         <div className="network-summary__heading">
           <span
             className={`network-symbol ${scan?.state === "healthy" ? "network-symbol--ok" : ""}`}
@@ -357,7 +361,7 @@ export function NetworkPage({
           </div>
         )}
       </section>
-      <section className="surface network-speed">
+      <section className="surface network-speed" hidden={tab!=="speed"}>
         <div className="network-speed__heading">
           <h2>带宽测速</h2>
           {speedBusy ? (
@@ -429,7 +433,7 @@ export function NetworkPage({
               ),
           )}
       </section>
-      {scan && scan.issues.length > 0 && (
+      {tab === "diagnostics" && scan && scan.issues.length > 0 && (
         <section className="surface network-issues">
           <h2>检查结果</h2>
           {scan.issues.map((issue) => (
@@ -447,7 +451,7 @@ export function NetworkPage({
           ))}
         </section>
       )}
-      {scan && (
+      {tab === "diagnostics" && scan && (
         <details className="surface network-details">
           <summary>检测详情</summary>
           <div className="network-detail-grid">
@@ -578,7 +582,7 @@ export function NetworkPage({
           ))}
         </details>
       )}
-      <details className="surface network-details">
+      <details className="surface network-details" hidden={tab!=="diagnostics"}>
         <summary>专项修复</summary>
         <p className="scope-note">
           自动修复无效时使用。会影响连接的操作均需再次确认。
@@ -601,7 +605,7 @@ export function NetworkPage({
           ))}
         </div>
       </details>
-      <details className="surface network-details">
+      <details className="surface network-details" hidden={tab!=="diagnostics"}>
         <summary>
           备份与还原{backups.length ? ` · ${backups.length}` : ""}
         </summary>
@@ -644,7 +648,7 @@ export function NetworkPage({
           <p className="scope-note">暂无备份。修复前会自动创建。</p>
         )}
       </details>
-      <div className="button-row">
+      <div className="button-row" hidden={tab!=="diagnostics"}>
         <button
           className="ghost-button"
           disabled={Boolean(busy)}

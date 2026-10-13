@@ -5,6 +5,7 @@ export const sections: Array<{ id: SectionId; label: string }> = [
   { id: "cleaning", label: "清理" },
   { id: "efficiency", label: "空间管理" },
   { id: "applications", label: "应用管理" },
+  { id: "network", label: "网络" },
   { id: "system", label: "系统工具" },
   { id: "components", label: "组件" },
   { id: "settings", label: "设置" },

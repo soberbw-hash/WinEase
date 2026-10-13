@@ -2228,6 +2228,8 @@ pub fn run() {
             network::network_export_report,
             network::speed::network_speedtest,
             network::speed::network_cancel_speedtest,
+            network::insights::network_site_tests,
+            network::insights::network_ip_info,
             management::health_check,
             optimization::start_optimization_check,
             optimization::optimization_status,

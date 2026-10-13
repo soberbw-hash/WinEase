@@ -25,7 +25,7 @@
 | 应用管理 | 当前会话进程、应用窗口、可恢复的用户 Run 启动项、深度卸载组件、弹窗规则 |
 | 系统工具 | 任务栏修复、默认浏览器与默认应用、统一系统组件/文件修复 |
 | 电脑体检 | 内存、磁盘、待重启/更新暂停、防护与病毒库、活动防火墙、异常设备及近期系统错误 |
-| 网络修复 | 网卡、IPv4/IPv6、DNS、直连/代理、TUN/路由、Hosts、WinHTTP 诊断；按证据修复、备份还原、脱敏报告；下载/上传 Mbps 测速、延迟和抖动 |
+| 网络 | 网卡、IPv4/IPv6、DNS、直连/代理、TUN/路由、Hosts、WinHTTP 诊断；按证据修复、备份还原、脱敏报告；下载/上传 Mbps 测速、延迟和抖动 |
 | 组件 | Everything、Snipaste、BCUninstaller 等组件的安装、打开、修复、更新与卸载 |
 | 设置 | 设备信息与日志、紧凑组件列表、关于中的开源声明、老板键、关于与赞助 |
 
@@ -66,3 +66,5 @@ npm run tauri build -- --bundles nsis
 最新 [一键优化配置组](docs/optimization-presets.md) 将 16 组可用配置纳入默认优化建议，检查后确认执行；优化设置默认收起，开关关闭恢复优化前。预装应用与维护操作仍按各自确认规则处理。
 
 本轮空间图、两列配置、紧凑结果与 Piik/RustDesk/LocalSend 组件的实现和调研见 [体验与组件记录](docs/experience-and-components.md)。
+
+独立网络入口、网站测试和公网 IP 信息的范围与验证见 [网络页面](docs/network-workspace.md)。

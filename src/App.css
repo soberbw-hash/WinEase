@@ -1842,6 +1842,19 @@ code {
 }
 
 [hidden] { display: none !important; }
+.network-sites-grid {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:18px;}
+.network-sites-grid h3 {display:flex;align-items:center;gap:8px;font-size:15px;}
+.network-sites-grid p {margin-top:10px;font-size:13px;overflow-wrap:anywhere;}
+.network-sites-grid small {color:#68707c;}
+.network-public-ip {display:flex;align-items:center;justify-content:space-between;gap:12px;padding:20px 0;}
+.network-public-ip strong,.network-public-ip small {display:block;overflow-wrap:anywhere;}
+.network-public-ip strong {font-size:24px;font-variant-numeric:tabular-nums;}
+.network-ip-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 24px;}
+.network-ip-grid>div {display:flex;justify-content:space-between;gap:14px;border-bottom:1px solid #edf0f4;padding:12px 0;}
+.network-ip-grid dt {color:#68707c;white-space:nowrap;}
+.network-ip-grid dd {margin:0;text-align:right;overflow-wrap:anywhere;}
+@media(max-width:1000px){.network-sites-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
+@media(max-width:760px){.network-ip-grid{grid-template-columns:1fr;}.network-public-ip strong{font-size:20px;}}
 .optimization-setting { align-items: center; gap: 16px; }
 .optimization-setting__text { flex: 1; min-width: 0; }
 .optimization-setting__controls { display: flex; align-items: center; justify-content: flex-end; gap: 12px; }

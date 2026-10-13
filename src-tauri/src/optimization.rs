@@ -605,21 +605,18 @@ async fn scan_network() -> Result<Findings, String> {
         row.target = Some("open_network".into());
         items.push(row);
     }
-    for probe in &scan.probes {
+    if items.is_empty() {
         let mut row = item(
-            format!("probe-{}", probe.id),
-            &probe.name,
-            format!(
-                "{}{}",
-                probe.detail,
-                if probe.ok {
-                    format!(" · {} ms", probe.latency_ms)
-                } else {
-                    String::new()
-                }
-            ),
-            if probe.ok { "healthy" } else { "info" },
+            "network-status",
+            "网络连接",
+            &scan.summary,
+            if scan.state == "healthy" {
+                "healthy"
+            } else {
+                "unknown"
+            },
         );
+        row.target = Some("open_network".into());
         row.icon_kind = "network".into();
         items.push(row);
     }

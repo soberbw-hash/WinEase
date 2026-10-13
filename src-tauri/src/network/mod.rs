@@ -1,6 +1,7 @@
 //! Functional integration of soberbw-hash/network-first-aid; UI stays native to WinEase.
 //! The owner's explicit integration request authorizes reuse; original license is retained.
 mod analysis;
+pub mod insights;
 pub(crate) mod runtime;
 pub mod speed;
 use serde::{Deserialize, Serialize};
